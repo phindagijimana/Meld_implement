@@ -15,8 +15,11 @@ FreeSurfer requires a **free license file** to run. Here's how to get it:
 Once you receive the license via email:
 
 ```bash
+# Navigate to the repository root
+cd Meld_Graph
+
 # Save the license.txt file to this directory:
-cp /path/to/your/downloaded/license.txt /mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/freesurfer_license/license.txt
+cp /path/to/your/downloaded/license.txt freesurfer_license/license.txt
 ```
 
 Or create it manually in this directory as `license.txt` with the content from the email.
@@ -24,7 +27,7 @@ Or create it manually in this directory as `license.txt` with the content from t
 ### Step 3: Verify License
 
 ```bash
-cat /mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/freesurfer_license/license.txt
+cat freesurfer_license/license.txt
 ```
 
 The file should look like:
@@ -40,8 +43,8 @@ your-key-continues
 If you already have a FreeSurfer license somewhere on your system:
 
 ```bash
-# Copy it to the required location
-cp /path/to/existing/license.txt /mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/freesurfer_license/license.txt
+# Copy it to the required location (from repository root)
+cp /path/to/existing/license.txt freesurfer_license/license.txt
 ```
 
 ## Once License is in Place
@@ -49,7 +52,7 @@ cp /path/to/existing/license.txt /mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Do
 After you have the license file, you can run the MELD pipeline:
 
 ```bash
-cd /mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/meld_graph
+cd meld_graph
 ./run_meld_with_freesurfer.sh -id <subject_id>
 ```
 
