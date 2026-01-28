@@ -33,6 +33,44 @@ Meld_Graph/
 - **Python 3.9+**
 - **SLURM workload manager**
 - **Conda environment management**
+- **FreeSurfer License** (free - see setup below)
+
+## FreeSurfer License Setup ⚠️
+
+**IMPORTANT**: FreeSurfer requires a free license file to run. You must obtain and place this license before running the pipeline.
+
+### Getting Your License (Free & Quick)
+
+1. **Register for a FreeSurfer License** (takes 2 minutes):
+   - Go to: https://surfer.nmr.mgh.harvard.edu/registration.html
+   - Fill out the registration form
+   - You'll receive an email with a `license.txt` file attached
+
+2. **Place the License File**:
+   ```bash
+   # Save the license.txt file to this location:
+   cp /path/to/your/downloaded/license.txt freesurfer_license/license.txt
+   ```
+
+3. **Verify the License**:
+   ```bash
+   cat freesurfer_license/license.txt
+   ```
+   The file should contain your email and a license key.
+
+### Already Have a FreeSurfer License?
+
+If you already have a FreeSurfer license on your system, simply copy it:
+
+```bash
+# Find existing license
+find ~ -name "license.txt" 2>/dev/null | grep -i freesurfer
+
+# Copy to the required location
+cp /path/to/existing/license.txt freesurfer_license/license.txt
+```
+
+📝 **For detailed instructions, see:** [`freesurfer_license/GET_LICENSE.md`](freesurfer_license/GET_LICENSE.md)
 
 ## Quick Start
 
