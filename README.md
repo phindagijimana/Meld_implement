@@ -35,7 +35,7 @@ Meld_Graph/
 - **Conda environment management**
 - **FreeSurfer License** (free - see setup below)
 
-## FreeSurfer License Setup ⚠️
+## FreeSurfer License Setup
 
 **IMPORTANT**: FreeSurfer requires a free license file to run. You must obtain and place this license before running the pipeline.
 
@@ -70,7 +70,7 @@ find ~ -name "license.txt" 2>/dev/null | grep -i freesurfer
 cp /path/to/existing/license.txt freesurfer_license/license.txt
 ```
 
-📝 **For detailed instructions, see:** [`freesurfer_license/GET_LICENSE.md`](freesurfer_license/GET_LICENSE.md)
+**For detailed instructions, see:** [`freesurfer_license/GET_LICENSE.md`](freesurfer_license/GET_LICENSE.md)
 
 ## Quick Start
 
