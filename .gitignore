@@ -1,0 +1,67 @@
+# Data and Results
+meld_graph/meld_data/
+logs/
+*.log
+*.out
+*.err
+
+# Large container files
+containers/
+*.sif
+*.simg
+
+# PDFs and documents
+*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Data files
+*.npy
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+tmp/
+temp/
+
+# FreeSurfer license (sensitive)
+freesurfer_license/license.txt
+
+# Pipeline status (temporary/runtime file)
+PIPELINE_STATUS.txt
+
