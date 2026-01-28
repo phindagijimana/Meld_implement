@@ -127,7 +127,7 @@ If it is another pathology e.g. a tumour, the pipeline has not been developed / 
 The instructions below are for users that already have used MELD Graph v2.2.1 on patients and would like to update to MELD Graph V2.2.2 while keeping the same meld_data folder.
 
 
-### 📥 **Get the updated code**
+### **Get the updated code**
 
 Please follow the Download method below to get the new code
 
@@ -159,7 +159,7 @@ Then depending on if you have a Native, Docker or Singularity installation of ME
 
 :::{tab-item} Native
 :sync: Native
-**💻 Native Installation Users:** Your will need to update your environment with the new code. 
+**Native Installation Users:** Your will need to update your environment with the new code. 
 
 1. Activate your conda environment
 ```
@@ -175,7 +175,7 @@ pip install -e .
 :::{tab-item} Docker
 :sync: Docker
 
-**🐳 Docker Users:** You will need to pull the latest docker image
+**Docker Users:** You will need to pull the latest docker image
 ```bash
 docker pull meldproject/meld_graph:latest
 ```
@@ -185,14 +185,14 @@ docker pull meldproject/meld_graph:latest
 :::{tab-item} Singularity
 :sync: Singularity
 
-**🚀 Singularity Users:** You will need to pull the latest image
+**Singularity Users:** You will need to pull the latest image
 ```bash
 singularity pull docker://meldproject/meld_graph:latest
 ```
 :::
 ::::
 
-### 🗂️ **Update your meld_data_folder with the new test data**
+### **Update your meld_data_folder with the new test data**
 The command below will only download the test data and it should not overwrite the patients you have already ran.
 
 **WARNING**: It will overwrite the `demographics_file.csv` and `list_subjects.txt`. Please ensure to keep a copy of those files if you have modified them.
@@ -202,7 +202,7 @@ The command below will only download the test data and it should not overwrite t
 :::{tab-item} Native
 :sync: Native
 
-**💻 Native Installation Users:** 
+**Native Installation Users:** 
 ```bash
 ./meldgraph.sh prepare_classifier.py --update_test
 ```
@@ -211,7 +211,7 @@ The command below will only download the test data and it should not overwrite t
 :::{tab-item} Docker
 :sync: Docker
 
-**🐳 Docker Users:** 
+**Docker Users:** 
 ```bash
 DOCKER_USER="$(id -u):$(id -g)" docker compose run meld_graph python scripts/new_patient_pipeline/prepare_classifier.py --update_test
 ```
@@ -220,21 +220,21 @@ DOCKER_USER="$(id -u):$(id -g)" docker compose run meld_graph python scripts/new
 :::{tab-item} Singularity
 :sync: Singularity
 
-**🚀 Singularity Users:**
+**Singularity Users:**
 ```bash
 singularity exec meld_graph.sif /bin/bash -c "cd /app && python scripts/new_patient_pipeline/prepare_classifier.py --update_test"
 ```
 :::
 ::::
 
-### ✔️ **Run pytest again**
+### **Run pytest again**
 Follow the guidelines **"Verify installation"** to run the test again.
-- 💻[Native Installation Users](https://meld-graph.readthedocs.io/en/latest/install_native.html#verify-installation)
-- 🐳[Docker Users](https://meld-graph.readthedocs.io/en/latest/install_docker.html#verify-installation)
-- 🚀[Singularity Users](https://meld-graph.readthedocs.io/en/latest/install_singularity.html#verify-installation)
+- [Native Installation Users](https://meld-graph.readthedocs.io/en/latest/install_native.html#verify-installation)
+- [Docker Users](https://meld-graph.readthedocs.io/en/latest/install_docker.html#verify-installation)
+- [Singularity Users](https://meld-graph.readthedocs.io/en/latest/install_singularity.html#verify-installation)
 
 
-### 🧠 **Update your predictions with the registration fix**
+### **Update your predictions with the registration fix**
 If you want to update the predictions with the new registration for patients you have already ran through MELD Graph, please follow the instructions bellow:
 
 1) Create a list of ids of patients you want to rerun: e.g. `list_subjects_rerun_v2.2.2.txt`
@@ -248,7 +248,7 @@ If you want to update the predictions with the new registration for patients you
 :::{tab-item} Native
 :sync: Native
 
-**💻 Native Installation Users:** 
+**Native Installation Users:** 
 ```bash
 ./meldgraph.sh run_script_prediction.py -ids list_subjects_rerun_v2.2.2.txt --skip_prediction
 ```
@@ -257,7 +257,7 @@ If you want to update the predictions with the new registration for patients you
 :::{tab-item} Docker
 :sync: Docker
 
-**🐳 Docker Users:** 
+**Docker Users:** 
 ```bash
 DOCKER_USER="$(id -u):$(id -g)" docker compose run meld_graph python scripts/new_patient_pipeline/run_script_prediction.py -ids list_subjects_rerun_v2.2.2.txt --skip_prediction
 ```
@@ -266,7 +266,7 @@ DOCKER_USER="$(id -u):$(id -g)" docker compose run meld_graph python scripts/new
 :::{tab-item} Singularity
 :sync: Singularity
 
-**🚀 Singularity Users:**
+**Singularity Users:**
 ```bash
 singularity exec meld_graph.sif /bin/bash -c "cd /app && python scripts/new_patient_pipeline/run_script_prediction.py -ids list_subjects_rerun_v2.2.2.txt --skip_prediction"
 ```
