@@ -66,17 +66,7 @@ freesurfer_license/license.txt
 PIPELINE_STATUS.txt
 
 # Internal documentation (local only)
-CODE_LEVEL_RISKS.md
-FINAL_STRUCTURE.md
-PIPELINE_RISKS.md
-PIPELINE_STATUS.md
-PRODUCTION_FIXES_APPLIED.md
-SUB03_RESULTS_ANALYSIS.md
-DATA_SAFETY_VERIFICATION.md
-USAGE.md
-CLEANUP_PLAN.md
-FINAL_CLEANUP_SUMMARY.md
-RESTORE_PAPER.md
+NOTES.md
 
 # Reference papers folder (local only, PDFs excluded above)
 reference_papers/
