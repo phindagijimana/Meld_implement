@@ -229,11 +229,12 @@ def run_subjects_segmentation_parallel(subject_ids, num_procs=10, harmo_code="no
     # parallel version of the pipeline, finish each stage for all subjects first
 
     ### SEGMENTATION ###
-    ini_freesurfer = format("$FREESURFER_HOME/SetUpFreeSurfer.sh")
-    proc = Popen(ini_freesurfer, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
+    # Check if FreeSurfer is available (either native or via wrappers)
+    freesurfer_check = format("which recon-all")
+    proc = Popen(freesurfer_check, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
     proc.communicate()
     if proc.returncode!=0:
-        print(get_m(f'Could not initialise Freesurfer. Check that it is installed and that $FREESURFER_HOME exists', None, 'ERROR'))
+        print(get_m(f'Could not find FreeSurfer. Check that it is installed or that FreeSurfer wrappers are in PATH', None, 'ERROR'))
         return False
 
     ## Make a directory for the outputs
@@ -311,11 +312,12 @@ def run_subject_segmentation(subject_id, harmo_code="noHarmo", use_fastsurfer=Fa
     # pipeline to segment the brain, exract surface-based features for 1 subject
         
     ### SEGMENTATION ###
-    ini_freesurfer = format("$FREESURFER_HOME/SetUpFreeSurfer.sh")
-    proc = Popen(ini_freesurfer, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
+    # Check if FreeSurfer is available (either native or via wrappers)
+    freesurfer_check = format("which recon-all")
+    proc = Popen(freesurfer_check, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
     result = proc.communicate()
     if proc.returncode!=0:
-        print(get_m(f'Could not initialise Freesurfer. Check that it is installed and that $FREESURFER_HOME exists', None, 'ERROR'))
+        print(get_m(f'Could not find FreeSurfer. Check that it is installed or that FreeSurfer wrappers are in PATH', None, 'ERROR'))
         return False
         
 

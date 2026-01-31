@@ -8,6 +8,12 @@ import numpy as np
 from scripts.new_patient_pipeline.run_script_segmentation import run_script_segmentation
 from scripts.new_patient_pipeline.run_script_preprocessing import run_script_preprocessing
 from scripts.new_patient_pipeline.run_script_prediction import run_script_prediction
+from scripts.new_patient_pipeline.validate_outputs import (
+    validate_input_data,
+    validate_freesurfer_outputs,
+    validate_hdf5_files,
+    validate_prediction_outputs
+)
 from meld_graph.paths import MELD_DATA_PATH, DEMOGRAPHIC_FEATURES_FILE
 from meld_graph.tools_pipeline import get_m, create_demographic_file
 
@@ -128,6 +134,14 @@ if __name__ == "__main__":
         shutil.copy(os.path.join(MELD_DATA_PATH,args.demographic_file), demographic_file_tmp)
     
     #---------------------------------------------------------------------------------
+    ### INPUT VALIDATION ###
+    print(get_m(f'Validating input data', None, 'VALIDATION'))
+    for subject_id in subject_ids:
+        if not validate_input_data(subject_id, os.path.join(MELD_DATA_PATH, 'input')):
+            print(get_m(f'Input validation failed for subject {subject_id}. Please check input data.', None, 'ERROR'))
+            sys.exit(1)
+    
+    #---------------------------------------------------------------------------------
     ### SEGMENTATION ###
     if not args.skip_feature_extraction:
         print(get_m(f'Call script segmentation', None, 'SCRIPT 1'))
@@ -141,19 +155,35 @@ if __name__ == "__main__":
                             )
         if result == False:
             print(get_m(f'Segmentation and feature extraction has failed at least for one subject. See log at {file_path}. Consider fixing errors or excluding these subjects before re-running the pipeline. Segmentation will be skipped for subjects already processed', None, 'SCRIPT 1'))    
-            sys.exit()
+            sys.exit(1)
+        
+        # Validate FreeSurfer outputs
+        print(get_m(f'Validating FreeSurfer outputs', None, 'VALIDATION'))
+        for subject_id in subject_ids:
+            if not validate_freesurfer_outputs(subject_id, FS_SUBJECTS_PATH):
+                print(get_m(f'FreeSurfer output validation failed for {subject_id}', None, 'ERROR'))
+                sys.exit(1)
     else:
         print(get_m(f'Skip script segmentation', None, 'SCRIPT 1'))
 
     #---------------------------------------------------------------------------------
     ### PREPROCESSING ###
     print(get_m(f'Call script preprocessing', None, 'SCRIPT 2'))
-    run_script_preprocessing(
+    result = run_script_preprocessing(
                     harmo_code=args.harmo_code,
                     list_ids=args.list_ids,
                     sub_id=args.id,
                     harmonisation_only = args.harmo_only,
                     )
+    if result == False:
+        print(get_m(f'Preprocessing has failed at least for one subject. See log at {file_path}. Consider fixing errors or excluding these subjects before re-running the pipeline.', None, 'SCRIPT 2'))
+        sys.exit(1)
+    
+    # Validate HDF5 files
+    print(get_m(f'Validating preprocessed HDF5 files', None, 'VALIDATION'))
+    if not validate_hdf5_files(args.harmo_code, MELD_DATA_PATH, subject_ids):
+        print(get_m(f'HDF5 validation failed', None, 'ERROR'))
+        sys.exit(1)
 
     #---------------------------------------------------------------------------------
     ### PREDICTION ###
@@ -169,10 +199,21 @@ if __name__ == "__main__":
                             )
         if result == False:
             print(get_m(f'Prediction and mapping back to native MRI has failed at least for one subject. See log at {file_path}. Consider fixing errors or excluding these subjects before re-running the pipeline. Segmentation will be skipped for subjects already processed', None, 'SCRIPT 3'))    
-            sys.exit()
+            sys.exit(1)
+        
+        # Validate prediction outputs
+        if not args.no_nifti:
+            print(get_m(f'Validating prediction outputs', None, 'VALIDATION'))
+            for subject_id in subject_ids:
+                if not validate_prediction_outputs(subject_id, MELD_DATA_PATH):
+                    print(get_m(f'Prediction output validation failed for {subject_id}', None, 'ERROR'))
+                    sys.exit(1)
     else:
         print(get_m(f'Skip script predition', None, 'SCRIPT 3'))
-                
+    
+    #---------------------------------------------------------------------------------
+    ### FINAL SUCCESS ###
+    print(get_m(f'✓ Pipeline completed successfully for all subjects!', None, 'SUCCESS'))            
     print(f'You can find a log of the pipeline at {file_path}')
     
     #delete demographic file
