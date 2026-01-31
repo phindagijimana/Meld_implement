@@ -1,0 +1,23 @@
+#!/bin/bash
+FS_CONTAINER="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/containers/freesurfer-7.4.1.sif"
+LICENSE_DIR="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/freesurfer_license"
+MELD_DATA="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/meld_graph/meld_data"
+NUM_THREADS="8"
+
+# Check if -parallel flag is already in arguments
+if [[ "$*" != *"-parallel"* ]] && [[ "$*" == *"-all"* ]]; then
+    # Add parallelization flags for full recon-all runs
+    PARALLEL_FLAGS="-parallel -openmp $NUM_THREADS"
+else
+    PARALLEL_FLAGS=""
+fi
+
+apptainer exec \
+    --bind "$MELD_DATA:$MELD_DATA" \
+    --bind "$LICENSE_DIR:/license" \
+    --env FS_LICENSE=/license/license.txt \
+    --env FREESURFER_HOME=/usr/local/freesurfer \
+    --env OMP_NUM_THREADS=$NUM_THREADS \
+    --env ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=$NUM_THREADS \
+    "$FS_CONTAINER" \
+    bash -c "source /usr/local/freesurfer/SetUpFreeSurfer.sh && recon-all $* $PARALLEL_FLAGS"

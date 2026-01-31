@@ -262,13 +262,18 @@ def run_script_preprocessing(list_ids=None, sub_id=None, harmo_code='noHarmo', o
         #                                     output_dir=output_dir, 
         #                                     withoutflair=withoutflair)
     #compute the combat parameters for a new site
-    run_data_processing_new_subjects(subject_ids, 
-                                        harmo_code=harmo_code,
-                                        compute_harmonisation = compute_harmonisation,
-                                        demographic_file=demographic_file,
-                                        harmonisation_only = harmonisation_only,
-                                        output_dir=output_dir, 
-                                        withoutflair=withoutflair)
+    try:
+        run_data_processing_new_subjects(subject_ids, 
+                                            harmo_code=harmo_code,
+                                            compute_harmonisation = compute_harmonisation,
+                                            demographic_file=demographic_file,
+                                            harmonisation_only = harmonisation_only,
+                                            output_dir=output_dir, 
+                                            withoutflair=withoutflair)
+        return True
+    except Exception as e:
+        print(get_m(f'Preprocessing failed with error: {e}', None, 'ERROR'))
+        return False
         
 
 if __name__ == '__main__':

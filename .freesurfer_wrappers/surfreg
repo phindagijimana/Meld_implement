@@ -1,0 +1,15 @@
+#!/bin/bash
+FS_CONTAINER="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/containers/freesurfer-7.4.1.sif"
+LICENSE_DIR="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/freesurfer_license"
+MELD_DATA="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/meld_graph/meld_data"
+FS_OUTPUTS="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/meld_graph/meld_data/output/fs_outputs"
+
+apptainer exec \
+    --bind "$MELD_DATA:$MELD_DATA" \
+    --bind "$LICENSE_DIR:/license" \
+    --bind "$FS_OUTPUTS:/subjects" \
+    --env FS_LICENSE=/license/license.txt \
+    --env FREESURFER_HOME=/usr/local/freesurfer \
+    --env SUBJECTS_DIR=/subjects \
+    "$FS_CONTAINER" \
+    bash -c "source /usr/local/freesurfer/SetUpFreeSurfer.sh && surfreg $*"

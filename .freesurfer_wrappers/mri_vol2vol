@@ -1,0 +1,21 @@
+#!/bin/bash
+FS_CONTAINER="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/containers/freesurfer-7.4.1.sif"
+LICENSE_DIR="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/freesurfer_license"
+MELD_DATA="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/meld_graph/meld_data"
+CMD_NAME="mri_vol2vol"
+
+# Always use MELD's standard subjects directory  
+SUBJ_DIR="$MELD_DATA/output/fs_outputs"
+apptainer exec \
+    --bind "$MELD_DATA:$MELD_DATA" \
+    --bind "$LICENSE_DIR:/license" \
+    --env FS_LICENSE=/license/license.txt \
+    --env FREESURFER_HOME=/usr/local/freesurfer \
+    "$FS_CONTAINER" \
+    bash -c "source /usr/local/freesurfer/SetUpFreeSurfer.sh > /dev/null && export SUBJECTS_DIR='$SUBJ_DIR' && $CMD_NAME \"\$@\"" -- "$@"
+
+
+
+
+
+
