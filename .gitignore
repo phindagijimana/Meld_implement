@@ -76,4 +76,8 @@ DATA_SAFETY_VERIFICATION.md
 USAGE.md
 CLEANUP_PLAN.md
 FINAL_CLEANUP_SUMMARY.md
+RESTORE_PAPER.md
+
+# Reference papers folder (local only, PDFs excluded above)
+reference_papers/
 
