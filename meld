@@ -1,0 +1,581 @@
+#!/bin/bash
+
+################################################################################
+# MELD Graph Production Pipeline - Unified CLI
+#
+# A unified command-line interface for the MELD Graph FCD detection pipeline.
+# Provides simple, reproducible commands for installation, execution, and
+# monitoring on HPC systems with SLURM.
+#
+# Usage:
+#   ./meld <command> [options]
+#
+# Commands:
+#   install              Setup pipeline, check dependencies, download models
+#   run <subject>        Submit single subject to SLURM
+#   batch <subjects...>  Submit multiple subjects in parallel
+#   status [subject]     Check processing status
+#   validate <subject>   Validate input data
+#   logs <subject>       View logs for a subject
+#   stop <job-id>        Stop a running SLURM job
+#   results <subject>    View results summary
+#   config               Show current configuration
+#   version              Show version information
+#   help                 Show this help message
+#
+################################################################################
+
+set -e
+
+VERSION="1.0.0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="$SCRIPT_DIR"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# Functions
+print_header() {
+    echo -e "${BLUE}======================================================================${NC}"
+    echo -e "${BLUE}  MELD Graph Production Pipeline${NC}"
+    echo -e "${BLUE}  Version: $VERSION${NC}"
+    echo -e "${BLUE}======================================================================${NC}"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_info() {
+    echo -e "${CYAN}[INFO]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+show_help() {
+    cat << EOF
+
+MELD Graph Production Pipeline - Unified CLI
+
+USAGE:
+    ./meld <command> [options]
+
+COMMANDS:
+    install              Setup pipeline environment and dependencies
+    run <subject>        Submit single subject to SLURM queue
+    batch <subjects...>  Submit multiple subjects in parallel
+    status [subject]     Check processing status (all or specific subject)
+    validate <subject>   Validate input data for subject
+    logs <subject>       View processing logs for subject
+    stop <job-id>        Cancel running SLURM job
+    results <subject>    Display results summary for subject
+    shell                Open interactive container shell
+    config               Display current pipeline configuration
+    version              Show version and system information
+    help                 Show this help message
+
+EXAMPLES:
+    # Initial setup
+    ./meld install
+
+    # Process single subject
+    ./meld run sub-001
+
+    # Process multiple subjects
+    ./meld batch sub-001 sub-002 sub-003
+
+    # Check status
+    ./meld status              # All subjects
+    ./meld status sub-001      # Specific subject
+
+    # Validate data before processing
+    ./meld validate sub-001
+
+    # View logs
+    ./meld logs sub-001
+
+    # Stop a job
+    ./meld stop 12345
+
+    # View results
+    ./meld results sub-001
+
+CONFIGURATION:
+    Edit config.yaml to customize:
+    - Paths (data, models, FreeSurfer)
+    - SLURM settings (partition, memory, CPUs)
+    - Email notifications
+    - Retry behavior
+
+DOCUMENTATION:
+    README.md - Full documentation
+    config.yaml - Configuration reference
+
+EOF
+}
+
+cmd_install() {
+    print_header
+    echo ""
+    print_info "Installing MELD Graph Pipeline..."
+    echo ""
+    
+    # Check system requirements
+    print_info "Checking system requirements..."
+    
+    # Check SLURM
+    if ! command -v sbatch &> /dev/null; then
+        print_error "SLURM not found. This pipeline requires SLURM."
+        exit 1
+    fi
+    print_success "SLURM found"
+    
+    # Check Apptainer/Singularity
+    if ! command -v apptainer &> /dev/null && ! command -v singularity &> /dev/null; then
+        print_error "Apptainer/Singularity not found"
+        exit 1
+    fi
+    print_success "Container runtime found"
+    
+    # Check Python
+    if ! command -v python3 &> /dev/null; then
+        print_error "Python 3 not found"
+        exit 1
+    fi
+    print_success "Python found: $(python3 --version)"
+    
+    # Check FreeSurfer container
+    if [ ! -f "${BASE_DIR}/containers/freesurfer-7.4.1.sif" ]; then
+        print_warning "FreeSurfer container not found at containers/freesurfer-7.4.1.sif"
+        print_info "Please download or build the FreeSurfer container"
+    else
+        print_success "FreeSurfer container found"
+    fi
+    
+    # Check licenses
+    if [ ! -f "${BASE_DIR}/freesurfer_license/license.txt" ]; then
+        print_error "FreeSurfer license not found"
+        print_info "Place license.txt in freesurfer_license/"
+        print_info "See freesurfer_license/GET_LICENSE.md for instructions"
+        exit 1
+    fi
+    print_success "FreeSurfer license found"
+    
+    if [ ! -f "${BASE_DIR}/meld_license.txt" ]; then
+        print_warning "MELD license not found (required for v2.2.4+)"
+        print_info "Register at: https://docs.google.com/forms/d/e/1FAIpQLSdocMWtxbmh9T7Sv8NT4f0Kpev-tmRI-kngDhUeBF9VcZXcfg/viewform"
+    else
+        print_success "MELD license found"
+    fi
+    
+    # Check configuration
+    if [ ! -f "${BASE_DIR}/config.yaml" ]; then
+        print_warning "config.yaml not found"
+        print_info "Copy config.yaml.example to config.yaml and customize"
+    else
+        print_success "Configuration file found"
+    fi
+    
+    # Check data directories
+    print_info "Checking data directories..."
+    mkdir -p "${BASE_DIR}/meld_graph/meld_data/input"
+    mkdir -p "${BASE_DIR}/meld_graph/meld_data/output"
+    mkdir -p "${BASE_DIR}/logs"
+    print_success "Data directories ready"
+    
+    # Check models
+    if [ ! -d "${BASE_DIR}/meld_graph/meld_data/models" ]; then
+        print_warning "Pre-trained models not found"
+        print_info "Models should be in meld_graph/meld_data/models/"
+    else
+        print_success "Pre-trained models found"
+    fi
+    
+    echo ""
+    print_success "Installation check complete!"
+    echo ""
+    print_info "Next steps:"
+    echo "  1. Place subject data in: meld_graph/meld_data/input/<subject>/anat/"
+    echo "  2. Validate: ./meld validate <subject>"
+    echo "  3. Run: ./meld run <subject>"
+    echo ""
+}
+
+cmd_run() {
+    local subject="$1"
+    
+    if [ -z "$subject" ]; then
+        print_error "Subject ID required"
+        echo "Usage: ./meld run <subject>"
+        exit 1
+    fi
+    
+    print_header
+    echo ""
+    print_info "Submitting $subject to SLURM..."
+    echo ""
+    
+    if [ ! -f "${BASE_DIR}/run_meld_pipeline.sh" ]; then
+        print_error "run_meld_pipeline.sh not found"
+        exit 1
+    fi
+    
+    cd "$BASE_DIR"
+    sbatch run_meld_pipeline.sh "$subject"
+    
+    echo ""
+    print_success "Job submitted for $subject"
+    print_info "Check status: ./meld status $subject"
+    print_info "View logs: ./meld logs $subject"
+    echo ""
+}
+
+cmd_batch() {
+    if [ $# -eq 0 ]; then
+        print_error "Subject IDs required"
+        echo "Usage: ./meld batch <subject1> <subject2> ..."
+        exit 1
+    fi
+    
+    print_header
+    echo ""
+    print_info "Submitting batch of $# subjects..."
+    echo ""
+    
+    if [ ! -f "${BASE_DIR}/batch_process_subjects.sh" ]; then
+        print_error "batch_process_subjects.sh not found"
+        exit 1
+    fi
+    
+    cd "$BASE_DIR"
+    echo "y" | ./batch_process_subjects.sh "$@"
+    
+    echo ""
+    print_success "Batch jobs submitted"
+    print_info "Check status: ./meld status"
+    echo ""
+}
+
+cmd_status() {
+    local subject="$1"
+    
+    print_header
+    echo ""
+    
+    if [ ! -f "${BASE_DIR}/check_processing_status.py" ]; then
+        print_error "check_processing_status.py not found"
+        exit 1
+    fi
+    
+    cd "$BASE_DIR"
+    if [ -n "$subject" ]; then
+        python3 check_processing_status.py --subject "$subject"
+    else
+        python3 check_processing_status.py
+    fi
+}
+
+cmd_validate() {
+    local subject="$1"
+    
+    if [ -z "$subject" ]; then
+        print_error "Subject ID required"
+        echo "Usage: ./meld validate <subject>"
+        exit 1
+    fi
+    
+    print_header
+    echo ""
+    print_info "Validating input data for $subject..."
+    echo ""
+    
+    local input_dir="${BASE_DIR}/meld_graph/meld_data/input"
+    local subject_dir
+    
+    # Check multiple possible locations
+    if [ -d "${input_dir}/${subject}" ]; then
+        subject_dir="${input_dir}/${subject}/anat"
+    elif [ -d "${input_dir}/CIDUR_INPUTS/${subject}" ]; then
+        subject_dir="${input_dir}/CIDUR_INPUTS/${subject}/anat"
+    elif [ -d "${input_dir}/IDEAS/${subject}" ]; then
+        subject_dir="${input_dir}/IDEAS/${subject}/anat"
+    elif [ -d "${input_dir}/URMC_SUB/${subject}" ]; then
+        subject_dir="${input_dir}/URMC_SUB/${subject}/anat"
+    else
+        print_error "Subject directory not found: $subject"
+        print_info "Expected in: $input_dir/<subject>/anat/"
+        exit 1
+    fi
+    
+    print_success "Subject directory found: $subject_dir"
+    
+    # Check for T1w
+    if ls "$subject_dir"/*T1w.nii.gz 1> /dev/null 2>&1; then
+        local t1_file=$(ls "$subject_dir"/*T1w.nii.gz | head -1)
+        local t1_size=$(du -h "$t1_file" | cut -f1)
+        print_success "T1w found: $(basename $t1_file) ($t1_size)"
+    else
+        print_error "T1w image not found"
+        exit 1
+    fi
+    
+    # Check for FLAIR (optional)
+    if ls "$subject_dir"/*FLAIR.nii.gz 1> /dev/null 2>&1; then
+        local flair_file=$(ls "$subject_dir"/*FLAIR.nii.gz | head -1)
+        local flair_size=$(du -h "$flair_file" | cut -f1)
+        print_success "FLAIR found: $(basename $flair_file) ($flair_size)"
+    else
+        print_warning "FLAIR not found (optional but recommended)"
+    fi
+    
+    # Check JSON sidecars
+    if ls "$subject_dir"/*.json 1> /dev/null 2>&1; then
+        print_success "JSON metadata found"
+    else
+        print_warning "JSON metadata not found (optional)"
+    fi
+    
+    echo ""
+    print_success "Validation complete for $subject"
+    print_info "Ready to process: ./meld run $subject"
+    echo ""
+}
+
+cmd_logs() {
+    local subject="$1"
+    
+    if [ -z "$subject" ]; then
+        print_error "Subject ID required"
+        echo "Usage: ./meld logs <subject>"
+        exit 1
+    fi
+    
+    print_header
+    echo ""
+    print_info "Viewing logs for $subject..."
+    echo ""
+    
+    local log_dir="${BASE_DIR}/logs"
+    
+    if [ ! -d "$log_dir" ]; then
+        print_error "Logs directory not found"
+        exit 1
+    fi
+    
+    # Find most recent log
+    local log_file=$(ls -t "$log_dir"/*${subject}* 2>/dev/null | head -1)
+    
+    if [ -z "$log_file" ]; then
+        print_error "No logs found for $subject"
+        exit 1
+    fi
+    
+    print_info "Log file: $(basename $log_file)"
+    echo ""
+    echo "========================================================================"
+    tail -100 "$log_file"
+    echo "========================================================================"
+    echo ""
+    print_info "Full log: $log_file"
+    echo ""
+}
+
+cmd_stop() {
+    local job_id="$1"
+    
+    if [ -z "$job_id" ]; then
+        print_error "Job ID required"
+        echo "Usage: ./meld stop <job-id>"
+        echo ""
+        echo "To find job IDs, run: ./meld status"
+        exit 1
+    fi
+    
+    print_header
+    echo ""
+    print_info "Stopping SLURM job $job_id..."
+    echo ""
+    
+    if scancel "$job_id"; then
+        print_success "Job $job_id cancelled"
+    else
+        print_error "Failed to cancel job $job_id"
+        exit 1
+    fi
+    
+    echo ""
+}
+
+cmd_results() {
+    local subject="$1"
+    
+    if [ -z "$subject" ]; then
+        print_error "Subject ID required"
+        echo "Usage: ./meld results <subject>"
+        exit 1
+    fi
+    
+    print_header
+    echo ""
+    print_info "Results for $subject"
+    echo ""
+    
+    local output_dir="${BASE_DIR}/meld_graph/meld_data/output/predictions/${subject}/predictions"
+    
+    if [ ! -d "$output_dir" ]; then
+        print_error "Results not found for $subject"
+        print_info "Check if processing completed: ./meld status $subject"
+        exit 1
+    fi
+    
+    # Show cluster information
+    for hemi in lh rh; do
+        local csv_file="${output_dir}/info_clusters_${hemi}.csv"
+        if [ -f "$csv_file" ]; then
+            local n_clusters=$(tail -n +2 "$csv_file" | wc -l)
+            echo -e "${CYAN}${hemi^^} Hemisphere:${NC} $n_clusters cluster(s) detected"
+            
+            if [ $n_clusters -gt 0 ]; then
+                echo ""
+                tail -n +2 "$csv_file" | head -5 | while IFS=',' read -r cluster_id confidence_score area size; do
+                    echo "  Cluster $cluster_id: Confidence ${confidence_score}, Size ${size} vertices"
+                done
+                if [ $n_clusters -gt 5 ]; then
+                    echo "  ... and $((n_clusters - 5)) more cluster(s)"
+                fi
+            fi
+            echo ""
+        fi
+    done
+    
+    # List PDF reports
+    print_info "PDF Reports:"
+    ls -lh "$output_dir"/*.pdf 2>/dev/null | awk '{print "  " $9 " (" $5 ")"}'
+    
+    echo ""
+    print_info "Full results: $output_dir"
+    echo ""
+}
+
+cmd_shell() {
+    print_header
+    echo ""
+    print_info "Opening interactive shell in official MELD container..."
+    echo ""
+    
+    local container_script="${BASE_DIR}/docker_test/run_meld_container.sh"
+    
+    if [ ! -f "$container_script" ]; then
+        print_error "Container script not found"
+        print_info "Official container not set up"
+        exit 1
+    fi
+    
+    cd "${BASE_DIR}/docker_test"
+    ./run_meld_container.sh --shell
+}
+
+cmd_config() {
+    print_header
+    echo ""
+    print_info "Current Configuration"
+    echo ""
+    
+    if [ -f "${BASE_DIR}/config.yaml" ]; then
+        cat "${BASE_DIR}/config.yaml"
+    else
+        print_error "config.yaml not found"
+        exit 1
+    fi
+    
+    echo ""
+}
+
+cmd_version() {
+    print_header
+    echo ""
+    echo "Version: $VERSION"
+    echo "Location: $BASE_DIR"
+    echo ""
+    echo "System Information:"
+    echo "  SLURM: $(sinfo --version 2>/dev/null || echo 'Not available')"
+    echo "  Python: $(python3 --version 2>/dev/null || echo 'Not available')"
+    echo "  Container: $(apptainer --version 2>/dev/null || singularity --version 2>/dev/null || echo 'Not available')"
+    echo ""
+    echo "FreeSurfer:"
+    if [ -f "${BASE_DIR}/containers/freesurfer-7.4.1.sif" ]; then
+        echo "  Container: freesurfer-7.4.1.sif ($(du -h ${BASE_DIR}/containers/freesurfer-7.4.1.sif | cut -f1))"
+    else
+        echo "  Container: Not found"
+    fi
+    echo ""
+}
+
+# Main command router
+main() {
+    if [ $# -eq 0 ]; then
+        show_help
+        exit 0
+    fi
+    
+    local command="$1"
+    shift
+    
+    case "$command" in
+        install)
+            cmd_install "$@"
+            ;;
+        run)
+            cmd_run "$@"
+            ;;
+        batch)
+            cmd_batch "$@"
+            ;;
+        status)
+            cmd_status "$@"
+            ;;
+        validate)
+            cmd_validate "$@"
+            ;;
+        logs)
+            cmd_logs "$@"
+            ;;
+        stop)
+            cmd_stop "$@"
+            ;;
+        results)
+            cmd_results "$@"
+            ;;
+        shell)
+            cmd_shell "$@"
+            ;;
+        config)
+            cmd_config "$@"
+            ;;
+        version)
+            cmd_version "$@"
+            ;;
+        help|--help|-h)
+            show_help
+            ;;
+        *)
+            print_error "Unknown command: $command"
+            echo ""
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

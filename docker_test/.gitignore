@@ -1,0 +1,11 @@
+# Temporary files
+tmp/
+
+# Large data files
+meld_data/output/
+*.sif
+
+# Keep structure files
+!meld_data/input/.gitkeep
+!meld_data/output/.gitkeep
+!meld_data/models/.gitkeep

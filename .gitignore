@@ -71,3 +71,19 @@ NOTES.md
 # Reference papers folder (local only, PDFs excluded above)
 reference_papers/
 
+
+# Container setup documentation (local only)
+CONTAINER_SETUP_COMPLETE.md
+
+# Test data
+URMC_Test_Meld/
+
+# MELD license (sensitive)
+meld_license.txt
+docker_test/meld_license.txt
+docker_test/freesurfer_license.txt
+
+# Docker test data directories
+docker_test/meld_data/
+docker_test/tmp/
+docker_test/*.sif
