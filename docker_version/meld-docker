@@ -1,0 +1,308 @@
+#!/bin/bash
+
+set -e
+
+VERSION="1.0.0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONTAINER_IMAGE="${SCRIPT_DIR}/meld_graph_v2.2.4.sif"
+MELD_DATA_DIR="${SCRIPT_DIR}/meld_data"
+FS_LICENSE="${SCRIPT_DIR}/freesurfer_license.txt"
+MELD_LICENSE="${SCRIPT_DIR}/meld_license.txt"
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+print_header() {
+    echo -e "${BLUE}======================================================================${NC}"
+    echo -e "${BLUE}  MELD Graph Docker Deployment${NC}"
+    echo -e "${BLUE}  Version: $VERSION${NC}"
+    echo -e "${BLUE}======================================================================${NC}"
+}
+
+print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+print_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+
+show_help() {
+    cat << EOF
+
+MELD Graph Docker Deployment - CLI
+
+USAGE:
+    ./meld-docker <command> [options]
+
+COMMANDS:
+    run <subject>        Process single subject
+    batch <subjects...>  Process multiple subjects in parallel
+    status [subject]     Check processing status
+    validate <subject>   Validate input data
+    logs <subject>       View processing logs
+    results <subject>    Display results summary
+    shell                Open interactive container shell
+    version              Show version information
+    help                 Show this help message
+
+EXAMPLES:
+    ./meld-docker run sub-001
+    ./meld-docker batch sub-001 sub-002 sub-003
+    ./meld-docker status
+    ./meld-docker logs sub-001
+    ./meld-docker shell
+
+EOF
+}
+
+run_container() {
+    local cmd="$@"
+    apptainer exec \
+        --bind "${MELD_DATA_DIR}:/data" \
+        --bind "${FS_LICENSE}:/license.txt:ro" \
+        --bind "${MELD_LICENSE}:/app/meld_license.txt:ro" \
+        --env FS_LICENSE=/license.txt \
+        --env MELD_LICENSE=/app/meld_license.txt \
+        --env FREESURFER_HOME=/opt/freesurfer-7.2.0 \
+        --pwd /app \
+        "${CONTAINER_IMAGE}" \
+        $cmd
+}
+
+validate_environment() {
+    if [ ! -f "${CONTAINER_IMAGE}" ]; then
+        print_error "Container not found: ${CONTAINER_IMAGE}"
+        print_info "Run: apptainer pull meld_graph_v2.2.4.sif docker://meldproject/meld_graph:v2.2.4"
+        exit 1
+    fi
+    
+    if [ ! -f "${FS_LICENSE}" ]; then
+        print_error "FreeSurfer license not found: ${FS_LICENSE}"
+        exit 1
+    fi
+    
+    if [ ! -f "${MELD_LICENSE}" ]; then
+        print_warning "MELD license not found: ${MELD_LICENSE}"
+    fi
+    
+    if [ ! -d "${MELD_DATA_DIR}" ]; then
+        print_error "Data directory not found: ${MELD_DATA_DIR}"
+        exit 1
+    fi
+}
+
+cmd_run() {
+    local subject="$1"
+    
+    if [ -z "$subject" ]; then
+        print_error "Subject ID required"
+        echo "Usage: ./meld-docker run <subject>"
+        exit 1
+    fi
+    
+    print_header
+    echo ""
+    validate_environment
+    
+    print_info "Processing $subject..."
+    run_container python /app/meld_graph/scripts/new_patient_pipeline/new_pt_pipeline.py -id "$subject"
+    
+    if [ $? -eq 0 ]; then
+        print_success "Pipeline completed for $subject"
+        print_info "Results: ${MELD_DATA_DIR}/output/predictions_reports/${subject}/"
+    else
+        print_error "Pipeline failed for $subject"
+        exit 1
+    fi
+}
+
+cmd_batch() {
+    if [ $# -eq 0 ]; then
+        print_error "At least one subject required"
+        echo "Usage: ./meld-docker batch <subject1> [subject2] ..."
+        exit 1
+    fi
+    
+    print_header
+    echo ""
+    validate_environment
+    
+    print_info "Processing ${#@} subjects..."
+    echo ""
+    
+    for subject in "$@"; do
+        print_info "Starting: $subject"
+        run_container python /app/meld_graph/scripts/new_patient_pipeline/new_pt_pipeline.py -id "$subject" &
+    done
+    
+    wait
+    print_success "All subjects completed"
+}
+
+cmd_status() {
+    local subject="$1"
+    
+    print_header
+    echo ""
+    
+    if [ -z "$subject" ]; then
+        print_info "Checking all subjects..."
+        ls -la "${MELD_DATA_DIR}/output/predictions_reports/" 2>/dev/null || print_info "No results yet"
+    else
+        if [ -d "${MELD_DATA_DIR}/output/predictions_reports/${subject}" ]; then
+            print_success "$subject: Completed"
+            ls -lh "${MELD_DATA_DIR}/output/predictions_reports/${subject}/reports/"
+        else
+            print_info "$subject: Not found or in progress"
+        fi
+    fi
+}
+
+cmd_validate() {
+    local subject="$1"
+    
+    if [ -z "$subject" ]; then
+        print_error "Subject ID required"
+        exit 1
+    fi
+    
+    print_header
+    echo ""
+    validate_environment
+    
+    local subject_dir="${MELD_DATA_DIR}/input/${subject}/anat"
+    
+    if [ ! -d "$subject_dir" ]; then
+        print_error "Subject directory not found: $subject_dir"
+        exit 1
+    fi
+    
+    if [ -f "${subject_dir}/${subject}_T1w.nii.gz" ]; then
+        print_success "T1w found"
+    else
+        print_error "T1w not found: ${subject}_T1w.nii.gz"
+        exit 1
+    fi
+    
+    if [ -f "${subject_dir}/${subject}_FLAIR.nii.gz" ]; then
+        print_success "FLAIR found"
+    else
+        print_error "FLAIR not found: ${subject}_FLAIR.nii.gz"
+        exit 1
+    fi
+    
+    print_success "Validation passed for $subject"
+}
+
+cmd_logs() {
+    local subject="$1"
+    
+    if [ -z "$subject" ]; then
+        print_error "Subject ID required"
+        exit 1
+    fi
+    
+    local log_file="${MELD_DATA_DIR}/logs/MELD_pipeline_*.log"
+    
+    if ls ${log_file} 1> /dev/null 2>&1; then
+        tail -100 $(ls -t ${log_file} | head -1)
+    else
+        print_error "No logs found"
+    fi
+}
+
+cmd_results() {
+    local subject="$1"
+    
+    if [ -z "$subject" ]; then
+        print_error "Subject ID required"
+        exit 1
+    fi
+    
+    print_header
+    echo ""
+    
+    local reports_dir="${MELD_DATA_DIR}/output/predictions_reports/${subject}/reports"
+    
+    if [ ! -d "$reports_dir" ]; then
+        print_error "No results found for $subject"
+        exit 1
+    fi
+    
+    print_success "Results for $subject:"
+    echo ""
+    ls -lh "$reports_dir"
+    
+    if [ -f "${reports_dir}/info_clusters_${subject}.csv" ]; then
+        echo ""
+        print_info "Cluster information:"
+        cat "${reports_dir}/info_clusters_${subject}.csv" | head -3
+    fi
+}
+
+cmd_shell() {
+    print_header
+    echo ""
+    validate_environment
+    
+    print_info "Opening interactive shell in container..."
+    run_container /bin/bash
+}
+
+cmd_version() {
+    print_header
+    echo ""
+    echo "Version: $VERSION"
+    echo "Container: ${CONTAINER_IMAGE}"
+    echo "Data: ${MELD_DATA_DIR}"
+    echo ""
+}
+
+main() {
+    if [ $# -eq 0 ]; then
+        show_help
+        exit 0
+    fi
+    
+    local command="$1"
+    shift
+    
+    case "$command" in
+        run)
+            cmd_run "$@"
+            ;;
+        batch)
+            cmd_batch "$@"
+            ;;
+        status)
+            cmd_status "$@"
+            ;;
+        validate)
+            cmd_validate "$@"
+            ;;
+        logs)
+            cmd_logs "$@"
+            ;;
+        results)
+            cmd_results "$@"
+            ;;
+        shell)
+            cmd_shell
+            ;;
+        version)
+            cmd_version
+            ;;
+        help|--help|-h)
+            show_help
+            ;;
+        *)
+            print_error "Unknown command: $command"
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
