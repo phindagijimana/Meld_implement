@@ -20,7 +20,8 @@ cd docker_version && ./meld-docker run sub-001
 
 ```bash
 # 1. Clone repository
-git clone <repo-url> && cd Meld_Graph
+git clone https://github.com/phindagijimana/Meld_graph_implementation.git
+cd Meld_graph_implementation
 
 # 2. Get licenses (both free)
 # FreeSurfer: https://surfer.nmr.mgh.harvard.edu/registration.html → freesurfer_license/license.txt
@@ -44,7 +45,8 @@ git clone <repo-url> && cd Meld_Graph
 
 ```bash
 # 1. Clone and navigate
-git clone <repo-url> && cd Meld_Graph/docker_version
+git clone https://github.com/phindagijimana/Meld_graph_implementation.git
+cd Meld_graph_implementation/docker_version
 
 # 2. Pull container
 apptainer pull meld_graph_v2.2.4.sif docker://meldproject/meld_graph:v2.2.4
