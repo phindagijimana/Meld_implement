@@ -36,6 +36,10 @@ class IcoSpheres:
     ):
         # TODO already gets combine_hemis as input, can use that to choose edges file
         self.log = logging.getLogger(__name__)
+        # Convert relative path to absolute if needed
+        if not os.path.isabs(icosphere_path):
+            package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            icosphere_path = os.path.join(package_dir, icosphere_path)
         self.icosphere_path = icosphere_path
         self.icospheres = {}
         self.conv_type = conv_type

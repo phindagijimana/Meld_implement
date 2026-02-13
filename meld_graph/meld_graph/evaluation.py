@@ -15,6 +15,7 @@ import numpy as np
 import h5py
 import matplotlib.pyplot as plt
 import sklearn.metrics as metrics
+from meld_graph.hdf5_io import open_hdf5_with_retry
 import itertools
 import seaborn as sns
 from meld_graph.paths import MELD_DATA_PATH
@@ -913,7 +914,7 @@ class Evaluator:
         done = False
         while not done:
             try:
-                with h5py.File(filename, mode=mode) as f:
+                with open_hdf5_with_retry(filename, mode=mode) as f:
                     self.log.info(f"saving {dataset_str} for {subject}")
                     for i, hemi in enumerate(["lh", "rh"]):
                         shape = tuple([nvert_hemi] + list(prediction.shape[1:]))
