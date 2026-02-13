@@ -110,217 +110,160 @@ Production-ready pipeline for FCD (Focal Cortical Dysplasia) lesion detection us
                └── sub-001_FLAIR.nii.gz
    ```
 
-4. **Run container:**
+4. **Run pipeline:**
    ```bash
    cd docker_test
-   
-   # Using wrapper script
-   ./run_meld_container.sh python /app/meld_graph/scripts/new_patient_pipeline/new_pt_pipeline.py -id sub-001
-   
-   # Or direct Singularity
-   apptainer exec \
-     --bind meld_data:/data \
-     --bind freesurfer_license.txt:/license.txt:ro \
-     --bind meld_license.txt:/app/meld_license.txt:ro \
-     meld_graph_v2.2.4.sif \
-     python /app/meld_graph/scripts/new_patient_pipeline/new_pt_pipeline.py -id sub-001
+   ./run_meld_container.sh sub-001
    ```
 
-**Container Deployment Notes:**
+**Container CLI Commands:**
+```bash
+# Process subject
+./run_meld_container.sh sub-001
+
+# Process specific stage
+./run_meld_container.sh sub-001 segmentation
+./run_meld_container.sh sub-001 preprocessing
+./run_meld_container.sh sub-001 prediction
+
+# Validate input
+./run_meld_container.sh --validate sub-001
+
+# Interactive shell
+./run_meld_container.sh --shell
+
+# Help
+./run_meld_container.sh --help
+```
+
+**Container Architecture:**
 - Self-contained: All dependencies included
-- Official MELD image with FastSurfer support
+- Official MELD v2.2.4 with FastSurfer
 - Results in `docker_test/meld_data/output/`
 
 ---
 
 ## CLI Commands
 
-### Core Commands
+### Native Deployment CLI
 
 ```bash
-# Setup (native deployment only)
-./meld install              # Setup environment and validate dependencies
+# Setup and validation
+./meld install              # Setup environment
+./meld validate <subject>   # Validate input data
 
 # Processing
 ./meld run <subject>        # Process single subject
-./meld batch <sub1> <sub2>  # Process multiple subjects in parallel
+./meld batch <sub1> <sub2>  # Process multiple subjects
 
 # Monitoring
-./meld status               # Show all jobs status
-./meld status <subject>     # Show specific subject status
-./meld logs <subject>       # View processing logs
+./meld status [subject]     # Check processing status
+./meld logs <subject>       # View logs
+./meld results <subject>    # View results summary
 
 # Management
-./meld stop <job-id>        # Cancel running job
-./meld validate <subject>   # Validate input data before processing
-./meld results <subject>    # Display results summary
+./meld stop <job-id>        # Cancel job
+./meld config               # Show configuration
+./meld version              # Version info
+./meld help                 # Full help
+```
+
+### Docker/Container CLI
+
+```bash
+# Processing
+cd docker_test
+./run_meld_container.sh <subject>              # Full pipeline
+./run_meld_container.sh <subject> <stage>      # Specific stage
+
+# Stages: segmentation, preprocessing, prediction
 
 # Utilities
-./meld config               # Show configuration
-./meld version              # Show version info
-./meld help                 # Show help
+./run_meld_container.sh --validate <subject>   # Validate data
+./run_meld_container.sh --shell                # Interactive shell
+./run_meld_container.sh --help                 # Help
 ```
 
 ### Usage Examples
 
+**Native Deployment:**
 ```bash
-# Single subject workflow
-./meld validate sub-001      # Optional: check input data
+# Single subject
+./meld validate sub-001      # Optional: check data
 ./meld run sub-001           # Submit to SLURM
-./meld status sub-001        # Monitor progress
-./meld logs sub-001          # View logs if needed
-./meld results sub-001       # View results when complete
+./meld status sub-001        # Monitor
+./meld results sub-001       # View results
 
 # Batch processing
-./meld batch sub-001 sub-002 sub-003 sub-004
-
-# Monitor all jobs
-squeue -u $USER              # SLURM queue status
-./meld status                # Pipeline-specific status
+./meld batch sub-001 sub-002 sub-003
 ```
 
----
+**Docker Deployment:**
+```bash
+cd docker_test
 
-## Pipeline Stages
+# Single subject
+./run_meld_container.sh --validate sub-001   # Optional: check data
+./run_meld_container.sh sub-001              # Run pipeline
 
-1. **FreeSurfer Segmentation** (6-12 hours)
-   - Cortical reconstruction with T1w and FLAIR
-   - Surface extraction and parcellation
-
-2. **Feature Extraction** (10-20 minutes)
-   - Surface-based features (thickness, curvature, etc.)
-   - FLAIR intensity sampling at multiple depths
-   - Registration to template surface
-
-3. **Preprocessing** (5-10 minutes)
-   - Feature smoothing and clipping
-   - Combat harmonization (optional)
-   - Intra/inter-subject normalization
-   - Asymmetry calculation
-
-4. **Prediction** (2-5 minutes)
-   - Graph Neural Network inference
-   - Cluster detection and confidence scoring
-   - PDF report generation with saliency maps
+# Stage-by-stage
+./run_meld_container.sh sub-001 segmentation
+./run_meld_container.sh sub-001 preprocessing
+./run_meld_container.sh sub-001 prediction
+```
 
 ---
 
 ## Output Structure
 
 ```
-meld_graph/meld_data/output/
-├── fs_outputs/                          # FreeSurfer outputs
-│   └── sub-001/
-├── preprocessed_surf_data/              # Feature matrices (HDF5)
-├── classifier_outputs/                  # Raw predictions
-└── predictions_reports/                 # Final results
-    └── sub-001/
-        ├── predictions/
-        │   ├── prediction.nii.gz        # 3D prediction volume
-        │   ├── lh.prediction.nii.gz     # Left hemisphere
-        │   └── rh.prediction.nii.gz     # Right hemisphere
-        └── reports/
-            ├── MELD_report_sub-001.pdf  # Full report
-            ├── inflatbrain_sub-001.png  # Brain visualization
-            ├── info_clusters_sub-001.csv # Cluster statistics
-            └── saliency_*.png           # Feature importance maps
+output/
+├── fs_outputs/sub-001/              # FreeSurfer
+├── preprocessed_surf_data/          # Features (HDF5)
+├── classifier_outputs/              # Raw predictions
+└── predictions_reports/sub-001/
+    ├── predictions/
+    │   └── prediction.nii.gz        # 3D volume
+    └── reports/
+        ├── MELD_report_sub-001.pdf  # Full report
+        └── info_clusters_sub-001.csv # Cluster details
 ```
-
----
-
-## Configuration
-
-Key settings in `run_meld_pipeline.sh` (native) or `run_meld_container.sh` (Docker):
-
-```bash
-# SLURM Resources (native only)
-#SBATCH --partition=general
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
-#SBATCH --time=24:00:00
-
-# Paths
-FREESURFER_HOME=/path/to/freesurfer
-SUBJECTS_DIR=/path/to/output
-FS_LICENSE=/path/to/license.txt
-```
-
----
-
-## Interpreting Results
-
-### Confidence Scores
-
-- **High (>90%)**: Strong FCD likelihood - clinical review recommended
-- **Medium (70-90%)**: Possible FCD - correlate with clinical findings
-- **Low (<70%)**: Less certain - may warrant additional imaging
-
-### PDF Report Contents
-
-1. **Cluster Information**: Location, size, confidence score
-2. **Brain Visualizations**: Predictions overlaid on brain surfaces
-3. **Saliency Maps**: Features contributing to predictions
-4. **Feature Profiles**: Quantitative measures for detected clusters
 
 ---
 
 ## Troubleshooting
 
-### Common Issues
-
-**Pipeline fails immediately:**
+**Environment issues:**
 ```bash
-# Check environment
 conda activate meld_graph
 python --version  # Should be 3.9+
-
-# Verify licenses
-cat freesurfer_license/license.txt
-cat meld_license.txt
 ```
 
-**FreeSurfer segmentation fails:**
-- Verify T1w image quality (3D acquisition, good SNR)
-- Check FLAIR is 3D (2D FLAIR not supported)
-- Ensure sufficient memory (32GB+)
+**FreeSurfer fails:** Verify T1 and FLAIR are 3D, sufficient memory (32GB+)
 
-**HDF5 file locking error (parallel jobs):**
-- Jobs accessing shared files simultaneously
-- Let jobs finish naturally or stagger submission times
-
-**Out of memory:**
-```bash
-# Increase SLURM allocation in run_meld_pipeline.sh
-#SBATCH --mem=64G
-```
+**HDF5 lock errors:** Normal for parallel jobs, automatically retries
 
 **Check logs:**
 ```bash
-# SLURM logs
-tail -f logs/meld_pipeline_<jobid>.out
-cat logs/meld_pipeline_<jobid>.err
+# Native
+./meld logs sub-001
 
-# Pipeline logs
-tail -f meld_graph/meld_data/logs/MELD_pipeline_*.log
+# Docker
+docker_test/meld_data/logs/
+
+# SLURM
+logs/meld_pipeline_<jobid>.out
 ```
 
----
-
-## Performance Notes
-
-- **First run per subject**: 6-12 hours (FreeSurfer)
-- **Reprocessing with existing FreeSurfer**: 15-30 minutes
-- **Parallel jobs**: Limited by shared HDF5 file access during preprocessing
-- **Recommended**: Stagger job submissions by 1-2 minutes for parallel processing
+See TECHNICAL_REFERENCE.md for detailed troubleshooting.
 
 ---
 
-## Support & Documentation
+## Performance
 
-- **MELD Documentation**: https://meld-graph.readthedocs.io/
-- **Pipeline Help**: `./meld help`
-- **MELD Community**: https://meld.org.uk/
-- **Issues**: Check logs first, then consult MELD documentation
+- First run: 6-12 hours (FreeSurfer)
+- Reprocessing: 15-30 minutes
+- Parallel: Stagger submissions by 30-60s
 
 ---
 
