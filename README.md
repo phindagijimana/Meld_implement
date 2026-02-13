@@ -1,249 +1,343 @@
-# MELD Graph Pipeline - Professional Implementation
+# MELD Graph Pipeline
 
-## Overview
-
-This repository contains a professional implementation of the MELD Graph pipeline for FCD (Focal Cortical Dysplasia) lesion detection from MRI scans. The implementation follows software engineering best practices with comprehensive error handling, logging, and documentation.
-
-## Features
-
-- **Professional Code Structure**: Well-organized, commented code at senior-engineer level
-- **Comprehensive Error Handling**: Robust error detection and recovery mechanisms
-- **Detailed Logging**: Timestamped logs with multiple severity levels
-- **Environment Validation**: Automatic validation of dependencies and data
-- **SLURM Integration**: Optimized for high-performance computing environments
-- **Modular Design**: Separated configuration and execution logic
-
-## Architecture
-
-```
-Meld_Graph/
-├── run_meld_pipeline.sh          # Main pipeline script (generic)
-├── run_meld_sub03.sh             # Subject-specific script
-├── meld_config.sh                # Configuration file
-├── meld_graph/                   # MELD Graph installation
-├── containers/                   # FreeSurfer containers
-├── freesurfer_license/           # FreeSurfer licenses
-└── logs/                         # Pipeline logs
-```
-
-## Prerequisites
-
-- **MELD Graph 2.2.2+**
-- **FreeSurfer 7.4.1+** (containerized)
-- **Python 3.9+**
-- **SLURM workload manager**
-- **Conda environment management**
-- **FreeSurfer License** (free - see setup below)
-
-## FreeSurfer License Setup
-
-**IMPORTANT**: FreeSurfer requires a free license file to run. You must obtain and place this license before running the pipeline.
-
-### Getting Your License (Free & Quick)
-
-1. **Register for a FreeSurfer License** (takes 2 minutes):
-   - Go to: https://surfer.nmr.mgh.harvard.edu/registration.html
-   - Fill out the registration form
-   - You'll receive an email with a `license.txt` file attached
-
-2. **Place the License File**:
-   ```bash
-   # Save the license.txt file to this location:
-   cp /path/to/your/downloaded/license.txt freesurfer_license/license.txt
-   ```
-
-3. **Verify the License**:
-   ```bash
-   cat freesurfer_license/license.txt
-   ```
-   The file should contain your email and a license key.
-
-### Already Have a FreeSurfer License?
-
-If you already have a FreeSurfer license on your system, simply copy it:
-
-```bash
-# Find existing license
-find ~ -name "license.txt" 2>/dev/null | grep -i freesurfer
-
-# Copy to the required location
-cp /path/to/existing/license.txt freesurfer_license/license.txt
-```
-
-**For detailed instructions, see:** [`freesurfer_license/GET_LICENSE.md`](freesurfer_license/GET_LICENSE.md)
+Production-ready pipeline for FCD (Focal Cortical Dysplasia) lesion detection using Graph Neural Networks.
 
 ## Quick Start
 
-### 1. Run Pipeline for Specific Subject
-
 ```bash
-# Submit SLURM job for sub-03
-sbatch run_meld_sub03.sh
+# Process subjects
+./meld run sub-001
+./meld batch sub-001 sub-002 sub-003
 
-# Or use generic pipeline script
-sbatch run_meld_pipeline.sh sub-03
+# Check progress
+./meld status
+./meld logs sub-001
+
+# View results
+./meld results sub-001
 ```
 
-### 2. Monitor Job Status
+## Deployment Options
+
+### Option 1: Native Deployment (Recommended for HPC)
+
+**Prerequisites:**
+- Python 3.9+
+- SLURM workload manager
+- FreeSurfer 7.2+ (containerized via Singularity)
+- 32GB+ RAM per job
+
+**Setup:**
+
+1. **Clone repository:**
+   ```bash
+   git clone <repository-url>
+   cd Meld_Graph
+   ```
+
+2. **Create conda environment:**
+   ```bash
+   conda env create -f meld_graph/environment.yml
+   conda activate meld_graph
+   ```
+
+3. **Get FreeSurfer license** (free):
+   - Register at: https://surfer.nmr.mgh.harvard.edu/registration.html
+   - Save license to: `freesurfer_license/license.txt`
+
+4. **Get MELD license** (free):
+   - Request at: https://meld.org.uk/get-started/
+   - Save to: `meld_license.txt`
+
+5. **Configure FreeSurfer container:**
+   ```bash
+   # Download FreeSurfer Singularity container
+   cd containers
+   apptainer pull freesurfer-7.4.1.sif docker://freesurfer/freesurfer:7.4.1
+   ```
+
+6. **Prepare input data** (BIDS format):
+   ```bash
+   meld_graph/meld_data/input/
+   └── sub-001/
+       └── anat/
+           ├── sub-001_T1w.nii.gz
+           └── sub-001_FLAIR.nii.gz
+   ```
+
+7. **Run pipeline:**
+   ```bash
+   ./meld run sub-001
+   ```
+
+**Native Deployment Architecture:**
+- Custom FreeSurfer wrappers (`.freesurfer_wrappers/`)
+- Python scripts in `meld_graph/scripts/`
+- SLURM integration via `run_meld_pipeline.sh`
+- Results in `meld_graph/meld_data/output/`
+
+---
+
+### Option 2: Docker/Container Deployment
+
+**Prerequisites:**
+- Docker or Singularity/Apptainer
+- 32GB+ RAM
+
+**Setup:**
+
+1. **Pull official MELD container:**
+   ```bash
+   # For Docker
+   docker pull meldproject/meld_graph:v2.2.4
+   
+   # For Singularity (HPC)
+   cd docker_test
+   apptainer pull meld_graph_v2.2.4.sif docker://meldproject/meld_graph:v2.2.4
+   ```
+
+2. **Get licenses** (same as native):
+   - FreeSurfer license → `docker_test/freesurfer_license.txt`
+   - MELD license → `docker_test/meld_license.txt`
+
+3. **Prepare data directory:**
+   ```bash
+   docker_test/meld_data/
+   └── input/
+       └── sub-001/
+           └── anat/
+               ├── sub-001_T1w.nii.gz
+               └── sub-001_FLAIR.nii.gz
+   ```
+
+4. **Run container:**
+   ```bash
+   cd docker_test
+   
+   # Using wrapper script
+   ./run_meld_container.sh python /app/meld_graph/scripts/new_patient_pipeline/new_pt_pipeline.py -id sub-001
+   
+   # Or direct Singularity
+   apptainer exec \
+     --bind meld_data:/data \
+     --bind freesurfer_license.txt:/license.txt:ro \
+     --bind meld_license.txt:/app/meld_license.txt:ro \
+     meld_graph_v2.2.4.sif \
+     python /app/meld_graph/scripts/new_patient_pipeline/new_pt_pipeline.py -id sub-001
+   ```
+
+**Container Deployment Notes:**
+- Self-contained: All dependencies included
+- Official MELD image with FastSurfer support
+- Results in `docker_test/meld_data/output/`
+
+---
+
+## CLI Commands
+
+### Core Commands
 
 ```bash
-# Check job queue
-squeue -u $USER
+# Setup (native deployment only)
+./meld install              # Setup environment and validate dependencies
 
-# View job logs
-tail -f logs/meld_sub03_<job_id>.out
+# Processing
+./meld run <subject>        # Process single subject
+./meld batch <sub1> <sub2>  # Process multiple subjects in parallel
+
+# Monitoring
+./meld status               # Show all jobs status
+./meld status <subject>     # Show specific subject status
+./meld logs <subject>       # View processing logs
+
+# Management
+./meld stop <job-id>        # Cancel running job
+./meld validate <subject>   # Validate input data before processing
+./meld results <subject>    # Display results summary
+
+# Utilities
+./meld config               # Show configuration
+./meld version              # Show version info
+./meld help                 # Show help
 ```
 
-### 3. Verify Outputs
+### Usage Examples
 
 ```bash
-# Check predictions
-ls -la meld_graph/meld_data/output/predictions_reports/sub-03/predictions/
+# Single subject workflow
+./meld validate sub-001      # Optional: check input data
+./meld run sub-001           # Submit to SLURM
+./meld status sub-001        # Monitor progress
+./meld logs sub-001          # View logs if needed
+./meld results sub-001       # View results when complete
 
-# Check reports
-ls -la meld_graph/meld_data/output/predictions_reports/sub-03/reports/
+# Batch processing
+./meld batch sub-001 sub-002 sub-003 sub-004
+
+# Monitor all jobs
+squeue -u $USER              # SLURM queue status
+./meld status                # Pipeline-specific status
 ```
 
-## Configuration
-
-The pipeline uses a centralized configuration file (`meld_config.sh`) that contains:
-
-- **System Configuration**: SLURM settings, resource allocation
-- **Path Configuration**: All file and directory paths
-- **Environment Configuration**: Conda environments, Python paths
-- **Validation Configuration**: File size limits, quality checks
-- **Performance Configuration**: Timeouts, memory limits
+---
 
 ## Pipeline Stages
 
-### Stage 1: Segmentation and Feature Extraction
-- FreeSurfer cortical reconstruction
-- Surface-based feature extraction
-- Template surface registration
-- Feature sampling and normalization
+1. **FreeSurfer Segmentation** (6-12 hours)
+   - Cortical reconstruction with T1w and FLAIR
+   - Surface extraction and parcellation
 
-### Stage 2: Feature Preprocessing
-- Feature smoothing
-- Harmonization (optional)
-- Intra-subject normalization
-- Inter-subject normalization
+2. **Feature Extraction** (10-20 minutes)
+   - Surface-based features (thickness, curvature, etc.)
+   - FLAIR intensity sampling at multiple depths
+   - Registration to template surface
 
-### Stage 3: Lesion Prediction and Reports
-- MELD classifier execution
-- Prediction back-projection to native space
-- PDF report generation
-- Quality control outputs
+3. **Preprocessing** (5-10 minutes)
+   - Feature smoothing and clipping
+   - Combat harmonization (optional)
+   - Intra/inter-subject normalization
+   - Asymmetry calculation
 
-## Output Files
+4. **Prediction** (2-5 minutes)
+   - Graph Neural Network inference
+   - Cluster detection and confidence scoring
+   - PDF report generation with saliency maps
 
-### Predictions
-- `prediction.nii.gz`: Whole-brain prediction volume
-- `lh.prediction.nii.gz`: Left hemisphere prediction
-- `rh.prediction.nii.gz`: Right hemisphere prediction
+---
 
-### Reports
-- `MELD_report_<subject_id>.pdf`: Comprehensive PDF report
-- `inflatbrain_<subject_id>.png`: Inflated brain visualization
-- `info_clusters_<subject_id>.csv`: Cluster information summary
+## Output Structure
 
-## Error Handling
+```
+meld_graph/meld_data/output/
+├── fs_outputs/                          # FreeSurfer outputs
+│   └── sub-001/
+├── preprocessed_surf_data/              # Feature matrices (HDF5)
+├── classifier_outputs/                  # Raw predictions
+└── predictions_reports/                 # Final results
+    └── sub-001/
+        ├── predictions/
+        │   ├── prediction.nii.gz        # 3D prediction volume
+        │   ├── lh.prediction.nii.gz     # Left hemisphere
+        │   └── rh.prediction.nii.gz     # Right hemisphere
+        └── reports/
+            ├── MELD_report_sub-001.pdf  # Full report
+            ├── inflatbrain_sub-001.png  # Brain visualization
+            ├── info_clusters_sub-001.csv # Cluster statistics
+            └── saliency_*.png           # Feature importance maps
+```
 
-The pipeline includes comprehensive error handling:
+---
 
-- **Environment Validation**: Checks all dependencies and paths
-- **Data Validation**: Verifies input file integrity
-- **Resource Monitoring**: Tracks memory and disk usage
-- **Graceful Degradation**: Continues processing when possible
-- **Detailed Logging**: Captures all errors with context
+## Configuration
 
-## Logging
+Key settings in `run_meld_pipeline.sh` (native) or `run_meld_container.sh` (Docker):
 
-All operations are logged with timestamps and severity levels:
+```bash
+# SLURM Resources (native only)
+#SBATCH --partition=general
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --time=24:00:00
 
-- **INFO**: General information and progress updates
-- **WARN**: Non-critical issues that don't stop execution
-- **ERROR**: Critical errors that require attention
-- **SUCCESS**: Successful completion of major steps
-- **DEBUG**: Detailed debugging information
+# Paths
+FREESURFER_HOME=/path/to/freesurfer
+SUBJECTS_DIR=/path/to/output
+FS_LICENSE=/path/to/license.txt
+```
 
-## Quality Control
+---
 
-The pipeline performs automatic quality control:
+## Interpreting Results
 
-- **File Size Validation**: Ensures input files meet minimum requirements
-- **Disk Space Monitoring**: Prevents out-of-space errors
-- **Memory Usage Tracking**: Monitors resource consumption
-- **Output Verification**: Confirms all expected outputs are generated
+### Confidence Scores
+
+- **High (>90%)**: Strong FCD likelihood - clinical review recommended
+- **Medium (70-90%)**: Possible FCD - correlate with clinical findings
+- **Low (<70%)**: Less certain - may warrant additional imaging
+
+### PDF Report Contents
+
+1. **Cluster Information**: Location, size, confidence score
+2. **Brain Visualizations**: Predictions overlaid on brain surfaces
+3. **Saliency Maps**: Features contributing to predictions
+4. **Feature Profiles**: Quantitative measures for detected clusters
+
+---
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Surface Registration Failures**
-   - Ensure FreeSurfer license is valid
-   - Check FreeSurfer container integrity
-   - Verify input data quality
-
-2. **Memory Issues**
-   - Increase SLURM memory allocation
-   - Check for memory leaks in long-running jobs
-   - Monitor system memory usage
-
-3. **Disk Space Issues**
-   - Clean up old output files
-   - Increase disk space allocation
-   - Use compression for large files
-
-### Debug Mode
-
-Enable debug mode for detailed troubleshooting:
-
+**Pipeline fails immediately:**
 ```bash
-python scripts/new_patient_pipeline/new_pt_pipeline.py -id sub-03 --debug_mode
+# Check environment
+conda activate meld_graph
+python --version  # Should be 3.9+
+
+# Verify licenses
+cat freesurfer_license/license.txt
+cat meld_license.txt
 ```
 
-## Performance Optimization
+**FreeSurfer segmentation fails:**
+- Verify T1w image quality (3D acquisition, good SNR)
+- Check FLAIR is 3D (2D FLAIR not supported)
+- Ensure sufficient memory (32GB+)
 
-### Resource Allocation
-- **CPU**: 8 cores recommended for FreeSurfer
-- **Memory**: 32GB minimum for complex subjects
-- **Time**: 6-12 hours depending on data complexity
+**HDF5 file locking error (parallel jobs):**
+- Jobs accessing shared files simultaneously
+- Let jobs finish naturally or stagger submission times
 
-### Parallel Processing
-Enable parallel processing for multiple subjects:
-
+**Out of memory:**
 ```bash
-python scripts/new_patient_pipeline/new_pt_pipeline.py -ids subjects_list.txt --parallelise
+# Increase SLURM allocation in run_meld_pipeline.sh
+#SBATCH --mem=64G
 ```
 
-## Contributing
+**Check logs:**
+```bash
+# SLURM logs
+tail -f logs/meld_pipeline_<jobid>.out
+cat logs/meld_pipeline_<jobid>.err
 
-When modifying the pipeline:
-
-1. **Follow Code Standards**: Use consistent formatting and commenting
-2. **Update Documentation**: Keep README and comments current
-3. **Test Thoroughly**: Validate changes with multiple subjects
-4. **Error Handling**: Ensure robust error detection and recovery
-5. **Logging**: Add appropriate logging for new functionality
-
-## License
-
-This implementation follows the MELD Graph project licensing terms. Please refer to the original MELD Graph documentation for licensing details.
-
-## Support
-
-For technical support:
-
-1. **Check Logs**: Review pipeline logs for error messages
-2. **Validate Environment**: Ensure all dependencies are properly installed
-3. **Review Documentation**: Consult MELD Graph official documentation
-4. **Contact Support**: Reach out to the MELD Graph community
-
-## Version History
-
-- **v2.0** (2025-10-28): Professional implementation with comprehensive error handling
-- **v1.0** (2025-10-22): Initial implementation
+# Pipeline logs
+tail -f meld_graph/meld_data/logs/MELD_pipeline_*.log
+```
 
 ---
 
-*This implementation represents a professional-grade approach to running the MELD Graph pipeline with emphasis on reliability, maintainability, and user experience.*
+## Performance Notes
+
+- **First run per subject**: 6-12 hours (FreeSurfer)
+- **Reprocessing with existing FreeSurfer**: 15-30 minutes
+- **Parallel jobs**: Limited by shared HDF5 file access during preprocessing
+- **Recommended**: Stagger job submissions by 1-2 minutes for parallel processing
+
+---
+
+## Support & Documentation
+
+- **MELD Documentation**: https://meld-graph.readthedocs.io/
+- **Pipeline Help**: `./meld help`
+- **MELD Community**: https://meld.org.uk/
+- **Issues**: Check logs first, then consult MELD documentation
+
+---
+
+## License
+
+This pipeline implementation uses:
+- MELD Graph (MIT License)
+- FreeSurfer (FreeSurfer Software License)
+- FastSurfer (Apache 2.0 License)
+
+See individual components for detailed licensing terms.
+
+---
+
+## Version
+
+**Pipeline Version**: 1.0.0  
+**MELD Graph Version**: 2.2.2+  
+**FreeSurfer Version**: 7.4.1  
+**Last Updated**: 2026-02-13

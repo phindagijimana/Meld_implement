@@ -21,6 +21,7 @@ import glob
 import logging
 import meld_graph.mesh_tools as mt
 import scipy
+from meld_graph.hdf5_io import open_hdf5_with_retry
 
 
 class MeldCohort:
@@ -195,9 +196,9 @@ class MeldCohort:
         if os.path.isfile(p) and not write:
             f = h5py.File(p, "r")
         elif os.path.isfile(p) and write:
-            f = h5py.File(p, "r+")
+            f = open_hdf5_with_retry(p, "r+")
         elif not os.path.isfile(p) and write:
-            f = h5py.File(p, "a")
+            f = open_hdf5_with_retry(p, "a")
         else:
             f = None
         try:
@@ -656,9 +657,9 @@ class MeldSubject:
         # open hdf5 file
         if hdf5_file is not None:
             if not os.path.isfile(hdf5_file):
-                hdf5_file_context = h5py.File(hdf5_file, "a")
+                hdf5_file_context = open_hdf5_with_retry(hdf5_file, "a")
             else:
-                hdf5_file_context = h5py.File(hdf5_file, "r+")
+                hdf5_file_context = open_hdf5_with_retry(hdf5_file, "r+")
         else:
             hdf5_file_context = self.cohort._site_hdf5(
                 self.site_code, self.group, write=True, hdf5_file_root=hdf5_file_root

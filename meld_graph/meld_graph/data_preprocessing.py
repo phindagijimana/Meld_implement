@@ -15,6 +15,7 @@ import copy
 import h5py
 import pandas as pd
 import sys
+from meld_graph.hdf5_io import open_hdf5_with_retry
 import pickle
 import random
 from itertools import chain
@@ -599,9 +600,9 @@ class Preprocess:
     def save_norm_combat_parameters(self, feature, estimates, hdf5_file):
         """Save estimates from combat and normalisation parameters on hdf5"""
         if not os.path.isfile(hdf5_file):
-            hdf5_file_context = h5py.File(hdf5_file, "a")
+            hdf5_file_context = open_hdf5_with_retry(hdf5_file, "a")
         else:
-            hdf5_file_context = h5py.File(hdf5_file, "r+")
+            hdf5_file_context = open_hdf5_with_retry(hdf5_file, "r+")
 
         with hdf5_file_context as f:
             list_params = list(set(estimates))

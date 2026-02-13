@@ -14,7 +14,7 @@ from scripts.new_patient_pipeline.validate_outputs import (
     validate_hdf5_files,
     validate_prediction_outputs
 )
-from meld_graph.paths import MELD_DATA_PATH, DEMOGRAPHIC_FEATURES_FILE
+from meld_graph.paths import MELD_DATA_PATH, DEMOGRAPHIC_FEATURES_FILE, FS_SUBJECTS_PATH
 from meld_graph.tools_pipeline import get_m, create_demographic_file
 
 class Logger(object):
