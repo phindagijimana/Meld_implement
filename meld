@@ -148,17 +148,31 @@ cmd_install() {
     fi
     print_success "Container runtime found"
     
-    # Check Python
-    if ! command -v python3 &> /dev/null; then
-        print_error "Python 3 not found"
+    # Check conda
+    if ! command -v conda &> /dev/null; then
+        print_error "Conda not found. Install miniconda or anaconda first."
         exit 1
     fi
-    print_success "Python found: $(python3 --version)"
+    print_success "Conda found"
     
-    # Check FreeSurfer container
+    # Setup conda environment
+    print_info "Setting up conda environment..."
+    if conda env list | grep -q "meld_graph"; then
+        print_warning "Environment 'meld_graph' already exists"
+    else
+        print_info "Creating meld_graph environment..."
+        conda env create -f ${BASE_DIR}/meld_graph/environment.yml
+        print_success "Conda environment created"
+    fi
+    
+    # Download FreeSurfer container
+    print_info "Checking FreeSurfer container..."
+    mkdir -p "${BASE_DIR}/containers"
     if [ ! -f "${BASE_DIR}/containers/freesurfer-7.4.1.sif" ]; then
-        print_warning "FreeSurfer container not found at containers/freesurfer-7.4.1.sif"
-        print_info "Please download or build the FreeSurfer container"
+        print_info "Downloading FreeSurfer container (this may take several minutes)..."
+        cd "${BASE_DIR}/containers"
+        apptainer pull freesurfer-7.4.1.sif docker://freesurfer/freesurfer:7.4.1
+        print_success "FreeSurfer container downloaded"
     else
         print_success "FreeSurfer container found"
     fi
@@ -167,14 +181,14 @@ cmd_install() {
     if [ ! -f "${BASE_DIR}/freesurfer_license/license.txt" ]; then
         print_error "FreeSurfer license not found"
         print_info "Place license.txt in freesurfer_license/"
-        print_info "See freesurfer_license/GET_LICENSE.md for instructions"
+        print_info "Get it from: https://surfer.nmr.mgh.harvard.edu/registration.html"
         exit 1
     fi
     print_success "FreeSurfer license found"
     
     if [ ! -f "${BASE_DIR}/meld_license.txt" ]; then
         print_warning "MELD license not found (required for v2.2.4+)"
-        print_info "Register at: https://docs.google.com/forms/d/e/1FAIpQLSdocMWtxbmh9T7Sv8NT4f0Kpev-tmRI-kngDhUeBF9VcZXcfg/viewform"
+        print_info "Get it from: https://meld.org.uk/get-started/"
     else
         print_success "MELD license found"
     fi

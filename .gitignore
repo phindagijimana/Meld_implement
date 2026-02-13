@@ -80,10 +80,10 @@ URMC_Test_Meld/
 
 # MELD license (sensitive)
 meld_license.txt
-docker_test/meld_license.txt
-docker_test/freesurfer_license.txt
+docker_version/meld_license.txt
+docker_version/freesurfer_license.txt
 
-# Docker test data directories
-docker_test/meld_data/
-docker_test/tmp/
-docker_test/*.sif
+# Docker version data directories
+docker_version/meld_data/
+docker_version/tmp/
+docker_version/*.sif
