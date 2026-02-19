@@ -191,6 +191,7 @@ def validate_prediction_outputs(subject_id, output_dir):
 def validate_input_data(subject_id, data_dir):
     """
     Validate input data before starting pipeline
+    Supports both flat (anat/) and session (ses-*/anat/) structures
     
     Args:
         subject_id: Subject identifier
@@ -199,13 +200,30 @@ def validate_input_data(subject_id, data_dir):
     Returns:
         bool: True if input data is valid
     """
-    input_dir = os.path.join(data_dir, subject_id, 'anat')
+    import glob
+    base_subject_dir = os.path.join(data_dir, subject_id)
     
-    # T1 is mandatory
-    t1_file = os.path.join(input_dir, f'{subject_id}_T1w.nii.gz')
-    if not os.path.exists(t1_file):
+    # Detect structure: flat or session
+    if os.path.isdir(os.path.join(base_subject_dir, 'anat')):
+        input_dir = os.path.join(base_subject_dir, 'anat')
+        session_label = None
+    else:
+        # Check for session structure
+        session_dirs = glob.glob(os.path.join(base_subject_dir, 'ses-*', 'anat'))
+        if session_dirs:
+            input_dir = sorted(session_dirs)[0]  # Use first session
+            session_label = os.path.basename(os.path.dirname(input_dir))
+            print(get_m(f'Using session structure: {session_label}', subject_id, 'INFO'))
+        else:
+            print(get_m(f'Neither flat (anat/) nor session (ses-*/anat/) structure found', subject_id, 'ERROR'))
+            return False
+    
+    # Find T1 file (mandatory) - handle session labels in filename
+    t1_files = glob.glob(os.path.join(input_dir, '*T1w.nii.gz'))
+    if not t1_files:
         print(get_m(f'Missing required T1w image', subject_id, 'ERROR'))
         return False
+    t1_file = t1_files[0]
     
     if os.path.getsize(t1_file) < 1000000:  # Should be at least 1MB
         print(get_m(f'T1w image suspiciously small', subject_id, 'ERROR'))
@@ -222,9 +240,10 @@ def validate_input_data(subject_id, data_dir):
         print(get_m(f'Cannot load T1w image: {e}', subject_id, 'ERROR'))
         return False
     
-    # FLAIR is optional but recommended
-    flair_file = os.path.join(input_dir, f'{subject_id}_FLAIR.nii.gz')
-    if os.path.exists(flair_file):
+    # FLAIR is optional but recommended - handle session labels in filename
+    flair_files = glob.glob(os.path.join(input_dir, '*FLAIR.nii.gz'))
+    if flair_files:
+        flair_file = flair_files[0]
         try:
             img = nib.load(flair_file)
             if len(img.shape) != 3:
