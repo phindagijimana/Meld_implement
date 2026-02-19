@@ -78,6 +78,9 @@ CONTAINER_SETUP_COMPLETE.md
 # Test data
 local_test_data/
 
+# Source medical imaging data
+local_source_data/
+
 # MELD license (sensitive)
 meld_license.txt
 docker_version/meld_license.txt
