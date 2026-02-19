@@ -46,15 +46,35 @@ def return_bids_T1_FLAIR(bids_dir, subject_id):
         dict = json.load(json_file)
     # Create query
     for modality in ['T1', 'FLAIR']:
-        query = dict[modality]
+        query = dict[modality].copy()
         query['subject'] = subject_id
+        # Remove session constraint to allow matching any session
+        if 'session' in query and query['session'] is None:
+            del query['session']
         # Get a list of matching files
         files = layout.get(return_type='file', extension=['nii.gz'], **query)
         if len(files)==1:
             subject_data[f"{modality}_path"] = files[0]
         elif len(files)>1:
-            print(get_m(f'Find too much volumes for {modality}. Check and remove the additional volumes with same key name', subject_id, 'WARNING'))
-            return None
+            # Multiple files found - likely multiple sessions or duplicates
+            # Default to first session (sessions are sorted alphabetically)
+            sessions = sorted(set([layout.get_file(f).entities.get('session') for f in files if layout.get_file(f).entities.get('session')]))
+            if sessions:
+                first_session = sessions[0]
+                print(get_m(f'Multiple sessions found for {modality}. Using first session: {first_session}', subject_id, 'INFO'))
+                query['session'] = first_session
+                files = layout.get(return_type='file', extension=['nii.gz'], **query)
+                # Take first file if there are still duplicates (e.g., from symlinks)
+                if len(files) >= 1:
+                    subject_data[f"{modality}_path"] = files[0]
+                    if len(files) > 1:
+                        print(get_m(f'Found {len(files)} duplicate {modality} files for session {first_session}. Using first: {os.path.basename(files[0])}', subject_id, 'INFO'))
+                else:
+                    print(get_m(f'Could not find {modality} file in session {first_session}', subject_id, 'WARNING'))
+                    return None
+            else:
+                print(get_m(f'Find too much volumes for {modality}. Check and remove the additional volumes with same key name', subject_id, 'WARNING'))
+                return None
         else:
             subject_data[f"{modality}_path"] = None
     return subject_data

@@ -98,27 +98,47 @@ if [ ! -f "$PYTHON_BIN" ]; then
 fi
 echo "✓ Python: $PYTHON_BIN ($($PYTHON_BIN --version))"
 
-# Verify input data exists
-INPUT_DIR="${MELD_DATA_DIR}/input/${SUBJECT_ID}/anat"
-if [ ! -d "$INPUT_DIR" ]; then
-    echo "ERROR: Input directory not found: $INPUT_DIR"
-    echo "Please ensure subject data is in BIDS format at: ${MELD_DATA_DIR}/input/${SUBJECT_ID}/"
+# Verify input data exists - support both flat and session structure
+BASE_SUBJECT_DIR="${MELD_DATA_DIR}/input/${SUBJECT_ID}"
+if [ ! -d "$BASE_SUBJECT_DIR" ]; then
+    echo "ERROR: Subject directory not found: $BASE_SUBJECT_DIR"
     exit 1
 fi
 
-T1_FILE="${INPUT_DIR}/${SUBJECT_ID}_T1w.nii.gz"
-FLAIR_FILE="${INPUT_DIR}/${SUBJECT_ID}_FLAIR.nii.gz"
-
-if [ ! -f "$T1_FILE" ]; then
-    echo "ERROR: T1 file not found: $T1_FILE"
-    exit 1
-fi
-echo "✓ T1 file: $T1_FILE"
-
-if [ -f "$FLAIR_FILE" ]; then
-    echo "✓ FLAIR file: $FLAIR_FILE"
+# Detect structure: flat (anat/) or session (ses-*/anat/)
+if [ -d "${BASE_SUBJECT_DIR}/anat" ]; then
+    INPUT_DIR="${BASE_SUBJECT_DIR}/anat"
+    SESSION=""
+    echo "✓ Using flat structure: ${INPUT_DIR}"
+elif ls -d "${BASE_SUBJECT_DIR}"/ses-* 1> /dev/null 2>&1; then
+    SESSION_DIR=$(ls -d "${BASE_SUBJECT_DIR}"/ses-* | head -1)
+    INPUT_DIR="${SESSION_DIR}/anat"
+    SESSION=$(basename "$SESSION_DIR")
+    echo "✓ Using session structure: ${INPUT_DIR} (session: ${SESSION})"
+    if [ ! -d "$INPUT_DIR" ]; then
+        echo "ERROR: Session anat directory not found: $INPUT_DIR"
+        exit 1
+    fi
 else
-    echo "⚠ WARNING: FLAIR file not found (optional): $FLAIR_FILE"
+    echo "ERROR: Neither flat structure (anat/) nor session structure (ses-*/anat/) found"
+    echo "Expected: ${BASE_SUBJECT_DIR}/anat/ or ${BASE_SUBJECT_DIR}/ses-*/anat/"
+    exit 1
+fi
+
+# Verify files - they may have session labels in filenames
+if ls "${INPUT_DIR}"/*T1w.nii.gz 1> /dev/null 2>&1; then
+    T1_FILE=$(ls "${INPUT_DIR}"/*T1w.nii.gz | head -1)
+    echo "✓ T1 file: $(basename $T1_FILE)"
+else
+    echo "ERROR: T1 file not found in: $INPUT_DIR"
+    exit 1
+fi
+
+if ls "${INPUT_DIR}"/*FLAIR.nii.gz 1> /dev/null 2>&1; then
+    FLAIR_FILE=$(ls "${INPUT_DIR}"/*FLAIR.nii.gz | head -1)
+    echo "✓ FLAIR file: $(basename $FLAIR_FILE)"
+else
+    echo "⚠ WARNING: FLAIR file not found (optional)"
 fi
 
 echo ""
