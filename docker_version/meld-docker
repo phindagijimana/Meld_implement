@@ -172,25 +172,41 @@ cmd_validate() {
     echo ""
     validate_environment
     
-    local subject_dir="${MELD_DATA_DIR}/input/${subject}/anat"
+    local base_subject_dir="${MELD_DATA_DIR}/input/${subject}"
+    local subject_dir
+    
+    # Detect structure: flat or session
+    if [ -d "${base_subject_dir}/anat" ]; then
+        subject_dir="${base_subject_dir}/anat"
+        print_info "Using flat structure"
+    elif ls -d "${base_subject_dir}"/ses-* 1> /dev/null 2>&1; then
+        local session_dir=$(ls -d "${base_subject_dir}"/ses-* | head -1)
+        subject_dir="${session_dir}/anat"
+        print_info "Using session structure: $(basename $session_dir)"
+    else
+        print_error "Subject directory not found (flat or session structure)"
+        print_info "Expected: ${base_subject_dir}/anat/ or ${base_subject_dir}/ses-*/anat/"
+        exit 1
+    fi
     
     if [ ! -d "$subject_dir" ]; then
-        print_error "Subject directory not found: $subject_dir"
+        print_error "Anat directory not found: $subject_dir"
         exit 1
     fi
     
-    if [ -f "${subject_dir}/${subject}_T1w.nii.gz" ]; then
-        print_success "T1w found"
+    if ls "${subject_dir}"/*T1w.nii.gz 1> /dev/null 2>&1; then
+        local t1_file=$(ls "${subject_dir}"/*T1w.nii.gz | head -1)
+        print_success "T1w found: $(basename $t1_file)"
     else
-        print_error "T1w not found: ${subject}_T1w.nii.gz"
+        print_error "T1w not found"
         exit 1
     fi
     
-    if [ -f "${subject_dir}/${subject}_FLAIR.nii.gz" ]; then
-        print_success "FLAIR found"
+    if ls "${subject_dir}"/*FLAIR.nii.gz 1> /dev/null 2>&1; then
+        local flair_file=$(ls "${subject_dir}"/*FLAIR.nii.gz | head -1)
+        print_success "FLAIR found: $(basename $flair_file)"
     else
-        print_error "FLAIR not found: ${subject}_FLAIR.nii.gz"
-        exit 1
+        print_warning "FLAIR not found (optional)"
     fi
     
     print_success "Validation passed for $subject"

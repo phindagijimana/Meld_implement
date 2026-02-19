@@ -37,7 +37,9 @@ echo ""
 # DIRECTORY SETUP
 # =============================================================================
 
-BASE_DIR="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph"
+# Auto-detect base directory from script location (portable)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="${SCRIPT_DIR}"
 MELD_DATA_DIR="${BASE_DIR}/meld_graph/meld_data"
 LICENSE_FILE="${BASE_DIR}/freesurfer_license/license.txt"
 
