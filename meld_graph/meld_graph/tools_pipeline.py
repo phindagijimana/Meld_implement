@@ -31,7 +31,7 @@ def return_meld_T1_FLAIR(meld_dir, subject_id):
             subject_data[f"{modality}_path"] = None
     return subject_data
 
-def return_bids_T1_FLAIR(bids_dir, subject_id):
+def return_bids_T1_FLAIR(bids_dir, subject_id, session=None):
     subject_data={}
     subject_data['id'] = subject_id
     if 'sub-' in subject_id:
@@ -48,8 +48,14 @@ def return_bids_T1_FLAIR(bids_dir, subject_id):
     for modality in ['T1', 'FLAIR']:
         query = dict[modality].copy()
         query['subject'] = subject_id
-        # Remove session constraint to allow matching any session
-        if 'session' in query and query['session'] is None:
+        # Handle session parameter
+        if session:
+            # User specified session
+            session_label = session.replace('ses-', '')
+            query['session'] = session_label
+            print(get_m(f'Using specified session: {session_label}', subject_id, 'INFO'))
+        elif 'session' in query and query['session'] is None:
+            # Remove session constraint to allow matching any session
             del query['session']
         # Get a list of matching files
         files = layout.get(return_type='file', extension=['nii.gz'], **query)
@@ -79,16 +85,17 @@ def return_bids_T1_FLAIR(bids_dir, subject_id):
             subject_data[f"{modality}_path"] = None
     return subject_data
 
-def get_anat_files(subject_id):
+def get_anat_files(subject_id, session=None):
     ''' 
     return path of T1 and FLAIR if BIDs format or MELD format
+    session: optional session label (e.g., '1' or 'ses-1') for multi-session subjects
     '''
     input_dir = os.path.join(MELD_DATA_PATH, "input")
     subject_data_meld = return_meld_T1_FLAIR(input_dir, subject_id)
     if subject_data_meld is None:
         return None
     if subject_data_meld['T1_path'] is None:
-        subject_data_bids = return_bids_T1_FLAIR(input_dir, subject_id)
+        subject_data_bids = return_bids_T1_FLAIR(input_dir, subject_id, session)
         if subject_data_bids is None:
             return None
         if subject_data_bids['T1_path'] is None:

@@ -225,7 +225,7 @@ def extract_features(subject_id, fs_folder, output_dir, verbose=False):
     if result == False:
         return False
  
-def run_subjects_segmentation_parallel(subject_ids, num_procs=10, harmo_code="noHarmo", use_fastsurfer=False, verbose=False):
+def run_subjects_segmentation_parallel(subject_ids, num_procs=10, harmo_code="noHarmo", use_fastsurfer=False, verbose=False, session=None):
     # parallel version of the pipeline, finish each stage for all subjects first
 
     ### SEGMENTATION ###
@@ -242,7 +242,7 @@ def run_subjects_segmentation_parallel(subject_ids, num_procs=10, harmo_code="no
     os.makedirs(fs_folder, exist_ok=True)
 
     ## create dictionary with T1 and FLAIR paths
-    subjects_dict = np.array([get_anat_files(subject_id) for subject_id in subject_ids])
+    subjects_dict = np.array([get_anat_files(subject_id, session) for subject_id in subject_ids])
     
     if use_fastsurfer:
         ## first processing stage with fastsurfer: segmentation
@@ -308,7 +308,7 @@ def run_subjects_segmentation_parallel(subject_ids, num_procs=10, harmo_code="no
 
     return subject_ids
 
-def run_subject_segmentation(subject_id, harmo_code="noHarmo", use_fastsurfer=False, verbose=False):
+def run_subject_segmentation(subject_id, harmo_code="noHarmo", use_fastsurfer=False, verbose=False, session=None):
     # pipeline to segment the brain, exract surface-based features for 1 subject
         
     ### SEGMENTATION ###
@@ -326,7 +326,7 @@ def run_subject_segmentation(subject_id, harmo_code="noHarmo", use_fastsurfer=Fa
     os.makedirs(fs_folder, exist_ok=True)
 
     ## create dictionary with T1 and FLAIR paths
-    subject_dict = get_anat_files(subject_id)
+    subject_dict = get_anat_files(subject_id, session)
     
     if use_fastsurfer:
         ## first processing stage with fastsurfer: segmentation
@@ -354,7 +354,7 @@ def run_subject_segmentation(subject_id, harmo_code="noHarmo", use_fastsurfer=Fa
             return False
 
 
-def run_script_segmentation(list_ids=None, sub_id=None, harmo_code='noHarmo', use_parallel=False, use_fastsurfer=False, verbose=False ):
+def run_script_segmentation(list_ids=None, sub_id=None, harmo_code='noHarmo', use_parallel=False, use_fastsurfer=False, verbose=False, session=None):
     harmo_code = str(harmo_code)
     subject_id=None
     subject_ids=None
@@ -377,7 +377,7 @@ def run_script_segmentation(list_ids=None, sub_id=None, harmo_code='noHarmo', us
     
     if subject_id != None:
         #launch segmentation and feature extraction for 1 subject
-        result = run_subject_segmentation(subject_id,  harmo_code = harmo_code, use_fastsurfer = use_fastsurfer, verbose=verbose)
+        result = run_subject_segmentation(subject_id,  harmo_code = harmo_code, use_fastsurfer = use_fastsurfer, verbose=verbose, session=session)
         if result == False:
             print(get_m(f'One step of the pipeline has failed. Process has been aborted for this subject', subject_id, 'ERROR'))
             return False
@@ -385,7 +385,7 @@ def run_script_segmentation(list_ids=None, sub_id=None, harmo_code='noHarmo', us
         if use_parallel:
             #launch segmentation and feature extraction in parallel
             print(get_m(f'Run subjects in parallel', None, 'INFO'))
-            subject_ids_succeed = run_subjects_segmentation_parallel(subject_ids, harmo_code = harmo_code, use_fastsurfer = use_fastsurfer, verbose=verbose)
+            subject_ids_succeed = run_subjects_segmentation_parallel(subject_ids, harmo_code = harmo_code, use_fastsurfer = use_fastsurfer, verbose=verbose, session=session)
             subject_ids_failed= list(set(subject_ids).difference(subject_ids_succeed))
             if len(subject_ids_failed):
                 print(get_m(f'One step of the pipeline has failed. Process has been aborted for subjects {subject_ids_failed}', None, 'ERROR'))

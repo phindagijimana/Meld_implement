@@ -227,17 +227,38 @@ cmd_install() {
 }
 
 cmd_run() {
-    local subject="$1"
+    local subject=""
+    local session=""
+    
+    # Parse arguments
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --session|-ses)
+                session="$2"
+                shift 2
+                ;;
+            *)
+                if [ -z "$subject" ]; then
+                    subject="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
     
     if [ -z "$subject" ]; then
         print_error "Subject ID required"
-        echo "Usage: ./meld run <subject>"
+        echo "Usage: ./meld run <subject> [--session <ses>]"
         exit 1
     fi
     
     print_header
     echo ""
-    print_info "Submitting $subject to SLURM..."
+    if [ -n "$session" ]; then
+        print_info "Submitting $subject (session: $session) to SLURM..."
+    else
+        print_info "Submitting $subject to SLURM..."
+    fi
     echo ""
     
     if [ ! -f "${BASE_DIR}/run_meld_pipeline.sh" ]; then
@@ -246,7 +267,11 @@ cmd_run() {
     fi
     
     cd "$BASE_DIR"
-    sbatch run_meld_pipeline.sh "$subject"
+    if [ -n "$session" ]; then
+        sbatch run_meld_pipeline.sh "$subject" "$session"
+    else
+        sbatch run_meld_pipeline.sh "$subject"
+    fi
     
     echo ""
     print_success "Job submitted for $subject"

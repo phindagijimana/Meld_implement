@@ -22,14 +22,18 @@
 # Default subject: sub-03
 # =============================================================================
 
-# Parse subject ID from command line or use default
+# Parse subject ID and optional session from command line
 SUBJECT_ID="${1:-sub-03}"
+SESSION="$2"
 
 echo "============================================"
 echo "MELD Graph Pipeline - Complete Run"
 echo "============================================"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Subject: $SUBJECT_ID"
+if [ -n "$SESSION" ]; then
+    echo "Session: $SESSION"
+fi
 echo "Start time: $(date)"
 echo ""
 
@@ -37,9 +41,12 @@ echo ""
 # DIRECTORY SETUP
 # =============================================================================
 
-# Auto-detect base directory from script location (portable)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE_DIR="${SCRIPT_DIR}"
+# Get actual script directory (not SLURM submission directory)
+if [ -n "$SLURM_SUBMIT_DIR" ]; then
+    BASE_DIR="$SLURM_SUBMIT_DIR"
+else
+    BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
 MELD_DATA_DIR="${BASE_DIR}/meld_graph/meld_data"
 LICENSE_FILE="${BASE_DIR}/freesurfer_license/license.txt"
 
@@ -162,7 +169,11 @@ echo ""
 cd "${BASE_DIR}/meld_graph/scripts/new_patient_pipeline" || exit 1
 
 # Run pipeline with unbuffered output
-$PYTHON_BIN -u new_pt_pipeline.py -id "$SUBJECT_ID"
+if [ -n "$SESSION" ]; then
+    $PYTHON_BIN -u new_pt_pipeline.py -id "$SUBJECT_ID" -ses "$SESSION"
+else
+    $PYTHON_BIN -u new_pt_pipeline.py -id "$SUBJECT_ID"
+fi
 
 PIPELINE_EXIT_CODE=$?
 
