@@ -78,6 +78,9 @@ CONTAINER_SETUP_COMPLETE.md
 # Test data
 URMC_Test_Meld/
 
+# Source medical imaging data
+URMC_Meld_Derek/
+
 # MELD license (sensitive)
 meld_license.txt
 docker_version/meld_license.txt

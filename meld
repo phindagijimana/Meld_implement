@@ -316,23 +316,42 @@ cmd_validate() {
     
     local input_dir="${BASE_DIR}/meld_graph/meld_data/input"
     local subject_dir
+    local session_dir=""
     
     # Check multiple possible locations
+    local base_subject_dir=""
     if [ -d "${input_dir}/${subject}" ]; then
-        subject_dir="${input_dir}/${subject}/anat"
+        base_subject_dir="${input_dir}/${subject}"
     elif [ -d "${input_dir}/CIDUR_INPUTS/${subject}" ]; then
-        subject_dir="${input_dir}/CIDUR_INPUTS/${subject}/anat"
+        base_subject_dir="${input_dir}/CIDUR_INPUTS/${subject}"
     elif [ -d "${input_dir}/IDEAS/${subject}" ]; then
-        subject_dir="${input_dir}/IDEAS/${subject}/anat"
+        base_subject_dir="${input_dir}/IDEAS/${subject}"
     elif [ -d "${input_dir}/URMC_SUB/${subject}" ]; then
-        subject_dir="${input_dir}/URMC_SUB/${subject}/anat"
+        base_subject_dir="${input_dir}/URMC_SUB/${subject}"
+    elif [ -d "${input_dir}/Meld_Derek/${subject}" ]; then
+        base_subject_dir="${input_dir}/Meld_Derek/${subject}"
     else
         print_error "Subject directory not found: $subject"
-        print_info "Expected in: $input_dir/<subject>/anat/"
+        print_info "Expected in: $input_dir/<subject>/anat/ or $input_dir/<subject>/ses-*/anat/"
         exit 1
     fi
     
-    print_success "Subject directory found: $subject_dir"
+    # Check for session structure or flat structure
+    if [ -d "${base_subject_dir}/anat" ]; then
+        subject_dir="${base_subject_dir}/anat"
+        print_success "Subject directory found: $subject_dir"
+    elif ls -d "${base_subject_dir}"/ses-* 1> /dev/null 2>&1; then
+        session_dir=$(ls -d "${base_subject_dir}"/ses-* | head -1)
+        subject_dir="${session_dir}/anat"
+        if [ ! -d "$subject_dir" ]; then
+            print_error "Session found but anat directory missing: $session_dir"
+            exit 1
+        fi
+        print_success "Subject directory found: $subject_dir (session: $(basename $session_dir))"
+    else
+        print_error "Neither flat structure (anat/) nor session structure (ses-*/anat/) found"
+        exit 1
+    fi
     
     # Check for T1w
     if ls "$subject_dir"/*T1w.nii.gz 1> /dev/null 2>&1; then
