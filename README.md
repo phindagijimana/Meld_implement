@@ -39,9 +39,10 @@ cd Meld_graph_implementation
 ./meld run sub-001
 ```
 
-### Docker Deployment
+### Docker Deployment (Workstation)
 
-**Requirements:** Singularity/Docker, 32GB RAM
+**Requirements:** Singularity/Docker, 32GB RAM  
+**Note:** Runs directly without SLURM. For HPC/OOD environments, use native deployment.
 
 ```bash
 # 1. Clone and navigate
@@ -63,13 +64,13 @@ apptainer pull meld_graph_v2.2.4.sif docker://meldproject/meld_graph:v2.2.4
 
 ## CLI Reference
 
-### Native
+### Native (SLURM submission)
 
 ```bash
 ./meld install              # Automated setup
-./meld run <subject>        # Process subject
-./meld batch <sub1> <sub2>  # Process multiple
-./meld status [subject]     # Check status
+./meld run <subject>        # Submit to SLURM queue
+./meld batch <sub1> <sub2>  # Submit multiple jobs
+./meld status [subject]     # Check SLURM job status
 ./meld logs <subject>       # View logs
 ./meld results <subject>    # View results
 ./meld validate <subject>   # Validate data
@@ -77,13 +78,13 @@ apptainer pull meld_graph_v2.2.4.sif docker://meldproject/meld_graph:v2.2.4
 ./meld help                 # Help
 ```
 
-### Docker
+### Docker (Direct execution)
 
 ```bash
 cd docker_version
-./meld-docker run <subject>        # Process subject
-./meld-docker batch <sub1> <sub2>  # Process multiple
-./meld-docker status [subject]     # Check status
+./meld-docker run <subject>        # Run directly (blocking)
+./meld-docker batch <sub1> <sub2>  # Run multiple (parallel)
+./meld-docker status [subject]     # Check results
 ./meld-docker logs <subject>       # View logs
 ./meld-docker results <subject>    # View results
 ./meld-docker validate <subject>   # Validate data
@@ -91,6 +92,10 @@ cd docker_version
 ./meld-docker version              # Version info
 ./meld-docker help                 # Help
 ```
+
+**Deployment Selection:**
+- **HPC/SLURM/OOD:** Use native deployment
+- **Local workstation:** Use docker deployment
 
 ## Output
 
