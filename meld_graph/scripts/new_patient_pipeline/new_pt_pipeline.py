@@ -46,6 +46,11 @@ if __name__ == "__main__":
                         help="File containing list of ids. Can be txt or csv with 'ID' column",
                         required=False,
                         )
+    parser.add_argument("-ses","--session",
+                        default=None,
+                        help="Session label (e.g., '1' or 'ses-1'). For multi-session subjects, process specific session.",
+                        required=False,
+                        )
     parser.add_argument("-harmo_code","--harmo_code",
                         default="noHarmo",
                         help="Harmonisation code",
@@ -151,7 +156,8 @@ if __name__ == "__main__":
                             sub_id=args.id, 
                             use_parallel=args.parallelise, 
                             use_fastsurfer=args.fastsurfer,
-                            verbose = args.debug_mode
+                            verbose = args.debug_mode,
+                            session = args.session
                             )
         if result == False:
             print(get_m(f'Segmentation and feature extraction has failed at least for one subject. See log at {file_path}. Consider fixing errors or excluding these subjects before re-running the pipeline. Segmentation will be skipped for subjects already processed', None, 'SCRIPT 1'))    
