@@ -1,13 +1,51 @@
 #!/bin/bash
+#
+# meld-docker — Apptainer wrapper for MELD Graph v2.2.4 on HPC
+#
+# Follows the official MELD singularity/apptainer deployment guide:
+#   https://meld-graph.readthedocs.io/en/latest/install_singularity.html
+#
+# Official apptainer invocation:
+#   apptainer exec meld_graph.sif /bin/bash -c \
+#     "cd /app && source \$FREESURFER_HOME/FreeSurferEnv.sh && \
+#      python scripts/new_patient_pipeline/new_pt_pipeline.py -id <id>"
 
-set -e
+set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.2.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONTAINER_IMAGE="${SCRIPT_DIR}/meld_graph_v2.2.4.sif"
-MELD_DATA_DIR="${SCRIPT_DIR}/meld_data"
-FS_LICENSE="${SCRIPT_DIR}/freesurfer_license.txt"
-MELD_LICENSE="${SCRIPT_DIR}/meld_license.txt"
+
+# Portable anchor: directory that holds meld-docker, .sif, licenses, and (by default) meld_data/.
+# Override only for unusual layouts (e.g. scripts on one volume, data on another).
+export MELD_DEPLOY_ROOT="${MELD_DEPLOY_ROOT:-${SCRIPT_DIR}}"
+
+# Optional site overrides (bash; use ${MELD_DEPLOY_ROOT} for relative-to-bundle paths).
+if [[ -f "${SCRIPT_DIR}/production.env" ]]; then
+    set -a
+    # shellcheck source=/dev/null
+    source "${SCRIPT_DIR}/production.env"
+    set +a
+fi
+
+# ---------------------------------------------------------------------------
+# Directory overrides — all can be set via environment variables so the same
+# script can serve multiple data directories (e.g. different cohorts on NFS).
+#
+#   MELD_DEPLOY_ROOT — bundle root (default: directory containing this script)
+#   MELD_DATA_DIR    — data tree (default: ${MELD_DEPLOY_ROOT}/meld_data)
+#   MELD_PARAMS_SRC  — host meld_params/ → /data/meld_params (else MELD_DATA_DIR/meld_params)
+#   MODELS_SRC       — host models/ → /data/models (else MELD_DATA_DIR/models)
+#   MELD_CONTAINER_IMAGE / MELD_FS_LICENSE / MELD_MELD_LICENSE — optional explicit paths
+# ---------------------------------------------------------------------------
+CONTAINER_IMAGE="${MELD_CONTAINER_IMAGE:-${MELD_DEPLOY_ROOT}/meld_graph_v2.2.4.sif}"
+MELD_DATA_DIR="${MELD_DATA_DIR:-${MELD_DEPLOY_ROOT}/meld_data}"
+MELD_PARAMS_SRC="${MELD_PARAMS_SRC:-}"
+MODELS_SRC="${MODELS_SRC:-}"
+FS_LICENSE="${MELD_FS_LICENSE:-${MELD_DEPLOY_ROOT}/freesurfer_license.txt}"
+MELD_LICENSE="${MELD_MELD_LICENSE:-${MELD_DEPLOY_ROOT}/meld_license.txt}"
+LOCK_DIR="${MELD_DATA_DIR}/locks"
+# Top-level dirs under MELD_DATA_DIR that are not cohort folders (used by check + cohort sync)
+COHORT_RESERVED='^input$|^output$|^logs$|^locks$|^models$|^meld_params$|^tmp$'
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -16,305 +54,1085 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-print_header() {
-    echo -e "${BLUE}======================================================================${NC}"
-    echo -e "${BLUE}  MELD Graph Docker Deployment${NC}"
-    echo -e "${BLUE}  Version: $VERSION${NC}"
-    echo -e "${BLUE}======================================================================${NC}"
-}
-
+print_header()  { echo -e "${BLUE}======================================================================${NC}"
+                  echo -e "${BLUE}  MELD Graph — Apptainer/Singularity Deployment (v${VERSION})${NC}"
+                  echo -e "${BLUE}======================================================================${NC}"; }
 print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-print_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
+print_error()   { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+print_info()    { echo -e "${CYAN}[INFO]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 
+# ---------------------------------------------------------------------------
 show_help() {
-    cat << EOF
+    cat <<EOF
 
-MELD Graph Docker Deployment - CLI
+MELD Graph — Apptainer/Singularity Deployment
 
 USAGE:
-    ./meld-docker <command> [options]
+    ./meld-docker <command> [options] [pipeline flags]
 
 COMMANDS:
-    run <subject>        Process single subject
-    batch <subjects...>  Process multiple subjects in parallel
-    status [subject]     Check processing status
-    validate <subject>   Validate input data
-    logs <subject>       View processing logs
-    results <subject>    Display results summary
-    shell                Open interactive container shell
-    version              Show version information
-    help                 Show this help message
+    check                        Report what is OK / missing (image, licenses, models, SLURM, disk, …)
+    run <subject> [flags]        Process a single subject
+    batch <subjects...> [flags]  Process multiple subjects (sequential)
+    cohort <subcommand> [...]    Advanced: cohort → input/ sync + run/slurm (see ./meld-docker cohort)
+    status [subject]             Show processing status
+    validate <subject>           Validate input data structure
+    logs <subject>               View the pipeline log for a subject
+    results <subject>            Show results summary for a subject
+    shell                        Open an interactive container shell
+    slurm <subject> [flags]      Sync cohorts → input/, then submit one subject to SLURM
+    slurm cohort <Cohort> [flags] Sync, then submit each sub-* in meld_data/<Cohort>/ to SLURM
+    version                      Show version information
+    help                         Show this help message
+
+PORTABLE LAYOUT:
+    Defaults use MELD_DEPLOY_ROOT (directory containing this script): data in
+    \${MELD_DEPLOY_ROOT}/meld_data, image and licenses next to meld-docker.
+    Optional production.env in the same directory overrides paths (see production.env.example).
+
+PIPELINE FLAGS (passed through to new_pt_pipeline.py):
+    -harmo_code <code>           Harmonisation code (e.g. H1)
+    --fastsurfer                 Use FastSurfer instead of FreeSurfer
+    --parallelise                Parallelise segmentation
+    --skip_feature_extraction    Skip segmentation (re-use existing outputs)
+    --no_nifti                   Stop before producing nifti outputs
+    --no_report                  Stop before producing PDF reports
+    --debug_mode                 Print additional debug information
 
 EXAMPLES:
     ./meld-docker run sub-001
+    ./meld-docker run sub-001 --fastsurfer -harmo_code H1
     ./meld-docker batch sub-001 sub-002 sub-003
-    ./meld-docker status
+    ./meld-docker validate sub-001
     ./meld-docker logs sub-001
-    ./meld-docker shell
+    ./meld-docker status
+    ./meld-docker slurm sub-001 --fastsurfer
+
+Typical HPC flow:
+    ./meld-docker check
+    ./meld-docker slurm sub-001
+    ./meld-docker slurm cohort Meld_Owen
 
 EOF
 }
 
+# ---------------------------------------------------------------------------
+# validate_environment — checks all required files exist before any run
+# ---------------------------------------------------------------------------
+validate_environment() {
+    local ok=1
+
+    if [[ ! -f "${CONTAINER_IMAGE}" ]]; then
+        print_error "Container image not found: ${CONTAINER_IMAGE}"
+        print_info  "Build with: apptainer build meld_graph_v2.2.4.sif docker://meldproject/meld_graph:v2.2.4"
+        ok=0
+    fi
+
+    if [[ ! -f "${FS_LICENSE}" ]]; then
+        print_error "FreeSurfer license not found: ${FS_LICENSE}"
+        ok=0
+    fi
+
+    if [[ ! -f "${MELD_LICENSE}" ]]; then
+        print_error "MELD license not found: ${MELD_LICENSE}"
+        print_info  "Register at: https://docs.google.com/forms/d/e/1FAIpQLSdocMWtxbmh9T7Sv8NT4f0Kpev-tmRI-kngDhUeBF9VcZXcfg/viewform"
+        ok=0
+    fi
+
+    if [[ ! -d "${MELD_DATA_DIR}" ]]; then
+        print_error "Data directory not found: ${MELD_DATA_DIR}"
+        ok=0
+    fi
+
+    local params_src="${MELD_PARAMS_SRC:-${MELD_DATA_DIR}/meld_params}"
+    if [[ ! -d "${params_src}" ]]; then
+        print_error "meld_params not found: ${params_src}"
+        print_info  "Set MELD_PARAMS_SRC=<path> to use a different location"
+        ok=0
+    fi
+
+    local models_src="${MODELS_SRC:-${MELD_DATA_DIR}/models}"
+    if [[ ! -d "${models_src}" ]]; then
+        print_error "models not found: ${models_src}"
+        print_info  "Set MODELS_SRC=<path> to use a different location"
+        ok=0
+    fi
+
+    if [[ "${ok}" -eq 0 ]]; then
+        exit 1
+    fi
+
+    mkdir -p "${LOCK_DIR}"
+}
+
+# ---------------------------------------------------------------------------
+# cmd_check — readiness report (non-interactive; exit 1 if pipeline cannot run)
+# ---------------------------------------------------------------------------
+cmd_check() {
+    print_header
+    echo ""
+    print_info "MELD deploy root: ${MELD_DEPLOY_ROOT}"
+    print_info "Data directory:    ${MELD_DATA_DIR}"
+    echo ""
+
+    local critical=0
+    local rt
+    rt="$(command -v apptainer 2>/dev/null || command -v singularity 2>/dev/null || true)"
+    if [[ -n "${rt}" ]]; then
+        print_success "Container runtime on PATH: ${rt}"
+    else
+        print_error "apptainer/singularity not on PATH"
+        critical=1
+    fi
+
+    if command -v sbatch &>/dev/null; then
+        print_success "SLURM sbatch: $(command -v sbatch)"
+    else
+        print_warning "sbatch not on PATH — use ./meld-docker run on a machine with SLURM to submit"
+    fi
+
+    if [[ -f "${CONTAINER_IMAGE}" ]]; then
+        print_success "Apptainer image: ${CONTAINER_IMAGE}"
+    else
+        print_error "Missing image: ${CONTAINER_IMAGE}"
+        print_info "Build: apptainer build meld_graph_v2.2.4.sif docker://meldproject/meld_graph:v2.2.4"
+        critical=1
+    fi
+
+    if [[ -f "${FS_LICENSE}" ]]; then
+        print_success "FreeSurfer license: ${FS_LICENSE}"
+    else
+        print_error "Missing FreeSurfer license: ${FS_LICENSE}"
+        critical=1
+    fi
+
+    if [[ -f "${MELD_LICENSE}" ]]; then
+        print_success "MELD license: ${MELD_LICENSE}"
+    else
+        print_error "Missing MELD license: ${MELD_LICENSE}"
+        critical=1
+    fi
+
+    if [[ -d "${MELD_DATA_DIR}" ]]; then
+        print_success "Data directory exists: ${MELD_DATA_DIR}"
+    else
+        print_error "Data directory missing: ${MELD_DATA_DIR}"
+        critical=1
+    fi
+
+    local params_src="${MELD_PARAMS_SRC:-${MELD_DATA_DIR}/meld_params}"
+    if [[ -d "${params_src}" ]] && compgen -G "${params_src}/*" &>/dev/null; then
+        print_success "meld_params populated: ${params_src}"
+    else
+        print_error "meld_params missing or empty: ${params_src}"
+        critical=1
+    fi
+
+    local models_src="${MODELS_SRC:-${MELD_DATA_DIR}/models}"
+    if [[ -d "${models_src}" ]] && compgen -G "${models_src}/*" &>/dev/null; then
+        print_success "models populated: ${models_src}"
+    else
+        print_error "models missing or empty: ${models_src}"
+        critical=1
+    fi
+
+    local free_kb free_gb
+    if [[ -d "${MELD_DATA_DIR}" ]]; then
+        free_kb=$(df -k "${MELD_DATA_DIR}" 2>/dev/null | awk 'NR==2 {print $4}')
+        free_gb=$(( free_kb / 1024 / 1024 ))
+        if (( free_gb >= 15 )); then
+            print_success "Disk free under data path: ~${free_gb} GB"
+        else
+            print_warning "Low disk under data path: ~${free_gb} GB (recommend ≥15 GB free per subject)"
+        fi
+    fi
+
+    if [[ -f "${CONTAINER_IMAGE}" && -n "${rt}" ]]; then
+        print_info "Quick container smoke test..."
+        if "${rt}" exec "${CONTAINER_IMAGE}" true 2>/dev/null; then
+            print_success "Container exec <image> true — OK"
+        else
+            print_warning "Container exec test failed (permissions / FUSE / image format?)"
+        fi
+    fi
+
+    echo ""
+    print_info "Cohort folders (under ${MELD_DATA_DIR}, excluding input/output/…):"
+    local found=0
+    if [[ -d "${MELD_DATA_DIR}" ]]; then
+        for p in "${MELD_DATA_DIR}"/*/; do
+            [[ -d "${p}" ]] || continue
+            local bn
+            bn=$(basename "${p}")
+            echo "${bn}" | grep -qE "${COHORT_RESERVED}" && continue
+            local ns=0
+            for sp in "${p}"sub-*/; do
+                [[ -d "${sp}" ]] || continue
+                ns=1
+                break
+            done
+            if [[ "${ns}" -eq 1 ]]; then
+                print_info "  • ${bn}/"
+                found=1
+            fi
+        done
+    fi
+    if [[ "${found}" -eq 0 ]]; then
+        print_info "  (none with sub-* yet — add meld_data/<Cohort>/sub-XXX/anat/*T1w.nii.gz)"
+    fi
+
+    if [[ -d "${MELD_DATA_DIR}/input" ]]; then
+        local nsub
+        nsub=$(find "${MELD_DATA_DIR}/input" -mindepth 1 -maxdepth 1 -type d -name 'sub-*' 2>/dev/null | wc -l)
+        print_info "Subjects linked or present under input/: ${nsub}"
+    fi
+
+    echo ""
+    if [[ "${critical}" -eq 0 ]]; then
+        print_success "Check passed — you can run ./meld-docker slurm <subject> or slurm cohort <Cohort>"
+    else
+        print_error "Check failed — fix ${critical} critical item(s) above before run/slurm."
+        exit 1
+    fi
+    echo ""
+}
+
+# ---------------------------------------------------------------------------
+# check_disk_space — warn if < 15 GB free (FreeSurfer needs ~10 GB/subject)
+# ---------------------------------------------------------------------------
+check_disk_space() {
+    local free_kb
+    free_kb=$(df -k "${MELD_DATA_DIR}" | awk 'NR==2 {print $4}')
+    local free_gb=$(( free_kb / 1024 / 1024 ))
+    if (( free_gb < 15 )); then
+        print_warning "Only ${free_gb} GB free in ${MELD_DATA_DIR}. FreeSurfer needs ~10 GB per subject."
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# acquire_lock / release_lock — prevent duplicate runs on the same subject
+# ---------------------------------------------------------------------------
+acquire_lock() {
+    local subject="$1"
+    local lock_file="${LOCK_DIR}/${subject}.lock"
+    if [[ -f "${lock_file}" ]]; then
+        local existing_pid
+        existing_pid=$(cat "${lock_file}")
+        if kill -0 "${existing_pid}" 2>/dev/null; then
+            print_error "Subject ${subject} is already being processed (PID ${existing_pid})"
+            print_info  "Remove ${lock_file} manually if that process is no longer running."
+            exit 1
+        else
+            print_warning "Stale lock found for ${subject} — removing."
+            rm -f "${lock_file}"
+        fi
+    fi
+    echo "$$" > "${lock_file}"
+}
+
+release_lock() {
+    local subject="$1"
+    rm -f "${LOCK_DIR}/${subject}.lock"
+}
+
+# ---------------------------------------------------------------------------
+# run_container — official apptainer invocation per MELD singularity docs
+#
+# License mounts follow official convention:
+#   freesurfer license → /license.txt      (FS_LICENSE=/license.txt)
+#   MELD license      → /meld_license.txt  (MELD_LICENSE=/meld_license.txt)
+#
+# FreeSurferEnv.sh is sourced before the pipeline command, matching the
+# container's own entrypoint.sh behaviour.
+# ---------------------------------------------------------------------------
 run_container() {
-    local cmd="$@"
+    local cmd="$*"
+
+    # Build optional extra bind mounts for meld_params / models when they
+    # live outside MELD_DATA_DIR (e.g. shared across cohorts on NFS).
+    local extra_binds=()
+    if [[ -n "${MELD_PARAMS_SRC}" ]]; then
+        extra_binds+=(--bind "${MELD_PARAMS_SRC}:/data/meld_params:ro")
+    fi
+    if [[ -n "${MODELS_SRC}" ]]; then
+        extra_binds+=(--bind "${MODELS_SRC}:/data/models:ro")
+    fi
+
+    # The container ships numpy 1.22.0 (correct, compatible with pandas 1.4.1).
+    # However, if the user has a newer numpy installed in ~/.local (user-level
+    # pip), Python inside the container will find it first and override the
+    # container's numpy, causing a binary ABI incompatibility.
+    # PYTHONNOUSERSITE=1 prevents Python from reading ~/.local/lib/python*/
+    # site-packages inside the container, ensuring the container's own
+    # numpy 1.22.0 is always used.
     apptainer exec \
         --bind "${MELD_DATA_DIR}:/data" \
+        "${extra_binds[@]}" \
         --bind "${FS_LICENSE}:/license.txt:ro" \
-        --bind "${MELD_LICENSE}:/app/meld_license.txt:ro" \
+        --bind "${MELD_LICENSE}:/meld_license.txt:ro" \
         --env FS_LICENSE=/license.txt \
-        --env MELD_LICENSE=/app/meld_license.txt \
+        --env MELD_LICENSE=/meld_license.txt \
         --env FREESURFER_HOME=/opt/freesurfer-7.2.0 \
-        --pwd /app \
+        --env PYTHONNOUSERSITE=1 \
         "${CONTAINER_IMAGE}" \
-        $cmd
+        /bin/bash -c "cd /app && source \$FREESURFER_HOME/FreeSurferEnv.sh && ${cmd}"
 }
 
-validate_environment() {
-    if [ ! -f "${CONTAINER_IMAGE}" ]; then
-        print_error "Container not found: ${CONTAINER_IMAGE}"
-        print_info "Run: apptainer pull meld_graph_v2.2.4.sif docker://meldproject/meld_graph:v2.2.4"
-        exit 1
-    fi
-    
-    if [ ! -f "${FS_LICENSE}" ]; then
-        print_error "FreeSurfer license not found: ${FS_LICENSE}"
-        exit 1
-    fi
-    
-    if [ ! -f "${MELD_LICENSE}" ]; then
-        print_warning "MELD license not found: ${MELD_LICENSE}"
-    fi
-    
-    if [ ! -d "${MELD_DATA_DIR}" ]; then
-        print_error "Data directory not found: ${MELD_DATA_DIR}"
-        exit 1
-    fi
-}
-
-cmd_run() {
+# ---------------------------------------------------------------------------
+# new_subject_log_file — returns a timestamped, per-subject log path
+# ---------------------------------------------------------------------------
+new_subject_log_file() {
     local subject="$1"
-    
-    if [ -z "$subject" ]; then
+    local log_dir="${MELD_DATA_DIR}/logs"
+    mkdir -p "${log_dir}"
+    echo "${log_dir}/MELD_pipeline_${subject}_$(date +%Y-%m-%d-%H-%M-%S).log"
+}
+
+# ---------------------------------------------------------------------------
+# cmd_run
+# ---------------------------------------------------------------------------
+cmd_run() {
+    if [[ $# -eq 0 ]]; then
         print_error "Subject ID required"
-        echo "Usage: ./meld-docker run <subject>"
+        echo "Usage: ./meld-docker run <subject> [pipeline flags]"
         exit 1
     fi
-    
+
+    local subject="$1"
+    shift
+    local extra_flags="$*"
+
     print_header
     echo ""
     validate_environment
-    
-    print_info "Processing $subject..."
-    run_container python /app/meld_graph/scripts/new_patient_pipeline/new_pt_pipeline.py -id "$subject"
-    
-    if [ $? -eq 0 ]; then
-        print_success "Pipeline completed for $subject"
+    check_disk_space
+    acquire_lock "${subject}"
+
+    local log_file
+    log_file=$(new_subject_log_file "${subject}")
+
+    print_info "Processing ${subject}..."
+    print_info "Log: ${log_file}"
+    echo ""
+
+    local exit_code=0
+    run_container "python scripts/new_patient_pipeline/new_pt_pipeline.py -id ${subject} ${extra_flags}" \
+        2>&1 | tee "${log_file}" || exit_code=$?
+
+    release_lock "${subject}"
+
+    if [[ ${exit_code} -eq 0 ]]; then
+        print_success "Pipeline completed for ${subject}"
         print_info "Results: ${MELD_DATA_DIR}/output/predictions_reports/${subject}/"
     else
-        print_error "Pipeline failed for $subject"
-        exit 1
+        print_error "Pipeline failed for ${subject} (exit code ${exit_code})"
+        print_info "Full log: ${log_file}"
+        exit ${exit_code}
     fi
 }
 
+# ---------------------------------------------------------------------------
+# cmd_batch — sequential with per-subject exit-code tracking
+# ---------------------------------------------------------------------------
 cmd_batch() {
-    if [ $# -eq 0 ]; then
+    if [[ $# -eq 0 ]]; then
         print_error "At least one subject required"
-        echo "Usage: ./meld-docker batch <subject1> [subject2] ..."
+        echo "Usage: ./meld-docker batch <subject1> [subject2] ... [pipeline flags]"
         exit 1
     fi
-    
+
+    # Subjects are positional args; flags start with -
+    local subjects=()
+    local extra_flags=()
+    for arg in "$@"; do
+        if [[ "${arg}" == -* ]]; then
+            extra_flags+=("${arg}")
+        else
+            subjects+=("${arg}")
+        fi
+    done
+
+    if [[ ${#subjects[@]} -eq 0 ]]; then
+        print_error "No subject IDs provided"
+        exit 1
+    fi
+
     print_header
     echo ""
     validate_environment
-    
-    print_info "Processing ${#@} subjects..."
+    check_disk_space
+
+    local total=${#subjects[@]}
+    print_info "Processing ${total} subject(s): ${subjects[*]}"
     echo ""
-    
-    for subject in "$@"; do
-        print_info "Starting: $subject"
-        run_container python /app/meld_graph/scripts/new_patient_pipeline/new_pt_pipeline.py -id "$subject" &
+
+    local failed=()
+    local succeeded=()
+
+    for subject in "${subjects[@]}"; do
+        print_info "--- Starting: ${subject} ---"
+        local log_file
+        log_file=$(new_subject_log_file "${subject}")
+        print_info "Log: ${log_file}"
+
+        acquire_lock "${subject}"
+
+        local exit_code=0
+        run_container "python scripts/new_patient_pipeline/new_pt_pipeline.py -id ${subject} ${extra_flags[*]:-}" \
+            2>&1 | tee "${log_file}" || exit_code=$?
+
+        release_lock "${subject}"
+
+        if [[ ${exit_code} -eq 0 ]]; then
+            succeeded+=("${subject}")
+            print_success "${subject}: completed"
+        else
+            failed+=("${subject}")
+            print_error "${subject}: FAILED (exit ${exit_code}) — see ${log_file}"
+        fi
+        echo ""
     done
-    
-    wait
-    print_success "All subjects completed"
+
+    echo ""
+    print_info "===== Batch Summary ====="
+    print_info "Total:     ${total}"
+    print_success "Succeeded: ${#succeeded[@]} — ${succeeded[*]:-none}"
+    if [[ ${#failed[@]} -gt 0 ]]; then
+        print_error "Failed:    ${#failed[@]} — ${failed[*]}"
+        exit 1
+    fi
 }
 
+# ---------------------------------------------------------------------------
+# cmd_status
+# ---------------------------------------------------------------------------
 cmd_status() {
-    local subject="$1"
-    
+    local subject="${1:-}"
+
     print_header
     echo ""
-    
-    if [ -z "$subject" ]; then
-        print_info "Checking all subjects..."
-        ls -la "${MELD_DATA_DIR}/output/predictions_reports/" 2>/dev/null || print_info "No results yet"
-    else
-        if [ -d "${MELD_DATA_DIR}/output/predictions_reports/${subject}" ]; then
-            print_success "$subject: Completed"
-            ls -lh "${MELD_DATA_DIR}/output/predictions_reports/${subject}/reports/"
+
+    if [[ -z "${subject}" ]]; then
+        print_info "=== Completed subjects ==="
+        if ls "${MELD_DATA_DIR}/output/predictions_reports/" &>/dev/null 2>&1; then
+            ls -1 "${MELD_DATA_DIR}/output/predictions_reports/"
         else
-            print_info "$subject: Not found or in progress"
+            echo "  (none)"
+        fi
+
+        echo ""
+        print_info "=== In-progress (lock files) ==="
+        if ls "${LOCK_DIR}"/*.lock &>/dev/null 2>&1; then
+            for lock in "${LOCK_DIR}"/*.lock; do
+                local sub pid
+                sub=$(basename "${lock}" .lock)
+                pid=$(cat "${lock}")
+                if kill -0 "${pid}" 2>/dev/null; then
+                    echo "  ${sub} — PID ${pid} (running)"
+                else
+                    echo "  ${sub} — PID ${pid} (stale lock)"
+                fi
+            done
+        else
+            echo "  (none)"
+        fi
+
+        echo ""
+        print_info "=== FreeSurfer progress ==="
+        if ls -d "${MELD_DATA_DIR}/output/fs_outputs"/*/  &>/dev/null 2>&1; then
+            for fs_dir in "${MELD_DATA_DIR}/output/fs_outputs"/*/; do
+                local sub touch_count
+                sub=$(basename "${fs_dir}")
+                touch_count=$(ls "${fs_dir}/touch/" 2>/dev/null | wc -l)
+                if [[ -d "${MELD_DATA_DIR}/output/predictions_reports/${sub}" ]]; then
+                    echo "  ${sub} — DONE (${touch_count} FS stages)"
+                else
+                    echo "  ${sub} — in progress (${touch_count} FS stages complete)"
+                fi
+            done
+        else
+            echo "  (none)"
+        fi
+    else
+        local reports_dir="${MELD_DATA_DIR}/output/predictions_reports/${subject}"
+        local fs_dir="${MELD_DATA_DIR}/output/fs_outputs/${subject}"
+        local lock_file="${LOCK_DIR}/${subject}.lock"
+
+        if [[ -d "${reports_dir}" ]]; then
+            print_success "${subject}: COMPLETED"
+            ls -lh "${reports_dir}/reports/" 2>/dev/null || true
+        elif [[ -f "${lock_file}" ]]; then
+            local pid
+            pid=$(cat "${lock_file}")
+            if kill -0 "${pid}" 2>/dev/null; then
+                print_info "${subject}: RUNNING (PID ${pid})"
+            else
+                print_warning "${subject}: stale lock (PID ${pid} not running)"
+            fi
+            if [[ -d "${fs_dir}" ]]; then
+                local touch_count
+                touch_count=$(ls "${fs_dir}/touch/" 2>/dev/null | wc -l)
+                print_info "  FreeSurfer stages complete: ${touch_count}"
+                ls "${fs_dir}/touch/" 2>/dev/null | sed 's/^/    /' || true
+            fi
+        elif [[ -d "${fs_dir}" ]]; then
+            local touch_count
+            touch_count=$(ls "${fs_dir}/touch/" 2>/dev/null | wc -l)
+            print_info "${subject}: FreeSurfer in progress (${touch_count} stages, no active lock)"
+            ls "${fs_dir}/touch/" 2>/dev/null | sed 's/^/    /' || true
+        else
+            print_info "${subject}: Not started"
         fi
     fi
 }
 
+# ---------------------------------------------------------------------------
+# cmd_validate
+# ---------------------------------------------------------------------------
 cmd_validate() {
-    local subject="$1"
-    
-    if [ -z "$subject" ]; then
+    local subject="${1:-}"
+
+    if [[ -z "${subject}" ]]; then
         print_error "Subject ID required"
         exit 1
     fi
-    
+
     print_header
     echo ""
     validate_environment
-    
+
     local base_subject_dir="${MELD_DATA_DIR}/input/${subject}"
-    local subject_dir
-    
-    # Detect structure: flat or session
-    if [ -d "${base_subject_dir}/anat" ]; then
+    local subject_dir=""
+
+    if [[ -d "${base_subject_dir}/anat" ]]; then
         subject_dir="${base_subject_dir}/anat"
-        print_info "Using flat structure"
-    elif ls -d "${base_subject_dir}"/ses-* 1> /dev/null 2>&1; then
-        local session_dir=$(ls -d "${base_subject_dir}"/ses-* | head -1)
+        print_info "Structure: flat (${subject}/anat/)"
+    elif ls -d "${base_subject_dir}"/ses-* &>/dev/null 2>&1; then
+        local session_dir
+        session_dir=$(ls -d "${base_subject_dir}"/ses-* | head -1)
         subject_dir="${session_dir}/anat"
-        print_info "Using session structure: $(basename $session_dir)"
+        print_info "Structure: session ($(basename "${session_dir}")/anat/)"
     else
-        print_error "Subject directory not found (flat or session structure)"
-        print_info "Expected: ${base_subject_dir}/anat/ or ${base_subject_dir}/ses-*/anat/"
+        print_error "Subject directory not found. Expected:"
+        print_info "  ${base_subject_dir}/anat/"
+        print_info "  ${base_subject_dir}/ses-<label>/anat/"
         exit 1
     fi
-    
-    if [ ! -d "$subject_dir" ]; then
-        print_error "Anat directory not found: $subject_dir"
+
+    if [[ ! -d "${subject_dir}" ]]; then
+        print_error "anat directory not found: ${subject_dir}"
         exit 1
     fi
-    
-    if ls "${subject_dir}"/*T1w.nii.gz 1> /dev/null 2>&1; then
-        local t1_file=$(ls "${subject_dir}"/*T1w.nii.gz | head -1)
-        print_success "T1w found: $(basename $t1_file)"
+
+    if ls "${subject_dir}"/*T1w.nii.gz &>/dev/null 2>&1; then
+        local t1_file
+        t1_file=$(ls "${subject_dir}"/*T1w.nii.gz | head -1)
+        print_success "T1w found: $(basename "${t1_file}")"
     else
-        print_error "T1w not found"
+        print_error "T1w not found — expected *T1w.nii.gz in ${subject_dir}"
         exit 1
     fi
-    
-    if ls "${subject_dir}"/*FLAIR.nii.gz 1> /dev/null 2>&1; then
-        local flair_file=$(ls "${subject_dir}"/*FLAIR.nii.gz | head -1)
-        print_success "FLAIR found: $(basename $flair_file)"
+
+    if ls "${subject_dir}"/*FLAIR.nii.gz &>/dev/null 2>&1; then
+        local flair_file
+        flair_file=$(ls "${subject_dir}"/*FLAIR.nii.gz | head -1)
+        print_success "FLAIR found: $(basename "${flair_file}") (optional)"
     else
-        print_warning "FLAIR not found (optional)"
+        print_warning "FLAIR not found (optional — T1w-only run will proceed)"
     fi
-    
-    print_success "Validation passed for $subject"
+
+    if [[ ! -f "${MELD_DATA_DIR}/input/dataset_description.json" ]]; then
+        print_warning "Missing input/dataset_description.json (required for BIDS layout)"
+    else
+        print_success "dataset_description.json present"
+    fi
+
+    if [[ ! -f "${MELD_DATA_DIR}/input/meld_bids_config.json" ]]; then
+        print_warning "Missing input/meld_bids_config.json (required for BIDS layout)"
+    else
+        print_success "meld_bids_config.json present"
+    fi
+
+    print_success "Validation passed for ${subject}"
 }
 
+# ---------------------------------------------------------------------------
+# cmd_logs — show per-subject log (most recent run)
+# ---------------------------------------------------------------------------
 cmd_logs() {
-    local subject="$1"
-    
-    if [ -z "$subject" ]; then
+    local subject="${1:-}"
+
+    if [[ -z "${subject}" ]]; then
         print_error "Subject ID required"
+        echo "Usage: ./meld-docker logs <subject>"
         exit 1
     fi
-    
-    local log_file="${MELD_DATA_DIR}/logs/MELD_pipeline_*.log"
-    
-    if ls ${log_file} 1> /dev/null 2>&1; then
-        tail -100 $(ls -t ${log_file} | head -1)
+
+    local log_dir="${MELD_DATA_DIR}/logs"
+    local log_file
+    log_file=$(ls -t "${log_dir}/MELD_pipeline_${subject}_"*.log 2>/dev/null | head -1 || true)
+
+    if [[ -z "${log_file}" ]]; then
+        # Fallback: legacy logs not named by subject
+        log_file=$(ls -t "${log_dir}/MELD_pipeline_"*.log 2>/dev/null | head -1 || true)
+        if [[ -n "${log_file}" ]]; then
+            print_warning "No subject-specific log found. Showing most recent: $(basename "${log_file}")"
+        else
+            print_error "No logs found in ${log_dir}"
+            exit 1
+        fi
     else
-        print_error "No logs found"
+        print_info "Log: ${log_file}"
+    fi
+
+    echo ""
+    tail -100 "${log_file}"
+
+    # Also show FreeSurfer recon-all log tail if available
+    local recon_log="${MELD_DATA_DIR}/output/fs_outputs/${subject}/scripts/recon-all.log"
+    if [[ -f "${recon_log}" ]]; then
+        echo ""
+        print_info "=== FreeSurfer recon-all (last 30 lines) ==="
+        tail -30 "${recon_log}"
     fi
 }
 
+# ---------------------------------------------------------------------------
+# cmd_results
+# ---------------------------------------------------------------------------
 cmd_results() {
-    local subject="$1"
-    
-    if [ -z "$subject" ]; then
+    local subject="${1:-}"
+
+    if [[ -z "${subject}" ]]; then
         print_error "Subject ID required"
         exit 1
     fi
-    
+
     print_header
     echo ""
-    
+
     local reports_dir="${MELD_DATA_DIR}/output/predictions_reports/${subject}/reports"
-    
-    if [ ! -d "$reports_dir" ]; then
-        print_error "No results found for $subject"
+
+    if [[ ! -d "${reports_dir}" ]]; then
+        print_error "No results found for ${subject}"
+        print_info  "Expected: ${reports_dir}"
         exit 1
     fi
-    
-    print_success "Results for $subject:"
+
+    print_success "Results for ${subject}:"
     echo ""
-    ls -lh "$reports_dir"
-    
-    if [ -f "${reports_dir}/info_clusters_${subject}.csv" ]; then
+    ls -lh "${reports_dir}"
+
+    local cluster_csv="${reports_dir}/info_clusters_${subject}.csv"
+    if [[ -f "${cluster_csv}" ]]; then
         echo ""
-        print_info "Cluster information:"
-        cat "${reports_dir}/info_clusters_${subject}.csv" | head -3
+        print_info "Cluster information (first 5 rows):"
+        head -5 "${cluster_csv}"
     fi
 }
 
+# ---------------------------------------------------------------------------
+# cmd_shell — interactive shell with FreeSurfer environment sourced
+# ---------------------------------------------------------------------------
 cmd_shell() {
     print_header
     echo ""
     validate_environment
-    
-    print_info "Opening interactive shell in container..."
-    run_container /bin/bash
+    print_info "Opening interactive shell (FreeSurferEnv.sh sourced)..."
+    apptainer exec \
+        --bind "${MELD_DATA_DIR}:/data" \
+        --bind "${FS_LICENSE}:/license.txt:ro" \
+        --bind "${MELD_LICENSE}:/meld_license.txt:ro" \
+        --env FS_LICENSE=/license.txt \
+        --env MELD_LICENSE=/meld_license.txt \
+        --env FREESURFER_HOME=/opt/freesurfer-7.2.0 \
+        "${CONTAINER_IMAGE}" \
+        /bin/bash -c "cd /app && source \$FREESURFER_HOME/FreeSurferEnv.sh && exec /bin/bash"
 }
 
+# ---------------------------------------------------------------------------
+# submit_slurm_job — one sbatch (validate + sync must be done by caller)
+# ---------------------------------------------------------------------------
+submit_slurm_job() {
+    local subject="$1"
+    shift
+    local extra_flags="$*"
+
+    local log_dir="${MELD_DATA_DIR}/logs"
+    mkdir -p "${log_dir}"
+
+    print_info "Submitting ${subject} to SLURM..."
+
+    local mem cpus tlimit partition sbatch_partition mail_args
+    mem="${SLURM_MEM:-64G}"
+    cpus="${SLURM_CPUS_PER_TASK:-8}"
+    tlimit="${SLURM_TIME_LIMIT:-24:00:00}"
+    partition="${SLURM_PARTITION:-}"
+    sbatch_partition=()
+    if [[ -n "${partition}" ]]; then
+        sbatch_partition=(--partition="${partition}")
+    fi
+
+    mail_args=()
+    if [[ -n "${SLURM_MAIL_USER:-}" ]]; then
+        mail_args+=(--mail-user="${SLURM_MAIL_USER}")
+    fi
+    if [[ -n "${SLURM_MAIL_TYPE:-}" ]]; then
+        mail_args+=(--mail-type="${SLURM_MAIL_TYPE}")
+    fi
+
+    local job_id
+    job_id=$(sbatch \
+        "${sbatch_partition[@]}" \
+        --export=ALL \
+        "${mail_args[@]}" \
+        --job-name="meld_${subject}" \
+        --output="${log_dir}/slurm_${subject}_%j.out" \
+        --error="${log_dir}/slurm_${subject}_%j.out" \
+        --time="${tlimit}" \
+        --mem="${mem}" \
+        --cpus-per-task="${cpus}" \
+        --wrap="cd ${SCRIPT_DIR} && bash ./meld-docker run ${subject} ${extra_flags}" \
+        | awk '{print $NF}')
+
+    print_success "Submitted SLURM job ${job_id} for ${subject}"
+    print_info "Monitor: squeue -j ${job_id}"
+    print_info "Log:     ${log_dir}/slurm_${subject}_${job_id}.out"
+}
+
+# ---------------------------------------------------------------------------
+# cmd_slurm — one subject, or: slurm cohort <CohortFolder> [flags]
+# ---------------------------------------------------------------------------
+cmd_slurm() {
+    if [[ $# -eq 0 ]]; then
+        print_error "Missing arguments"
+        echo "Usage: ./meld-docker slurm <subject> [pipeline flags]"
+        echo "       ./meld-docker slurm cohort <CohortFolder> [pipeline flags]"
+        exit 1
+    fi
+
+    if [[ "$1" == "cohort" ]]; then
+        shift
+        if [[ $# -eq 0 ]]; then
+            print_error "Cohort folder name required (directory under ${MELD_DATA_DIR})"
+            echo "Example: ./meld-docker slurm cohort Meld_Owen"
+            exit 1
+        fi
+        local cohort="$1"
+        shift
+        validate_environment
+        cmd_cohort_sync
+        local root="${MELD_DATA_DIR}"
+        while IFS= read -r sub; do
+            [[ -z "${sub}" ]] && continue
+            if ! cohort_subject_has_t1w "${root}/${cohort}/${sub}"; then
+                print_warning "Skip ${sub} (no T1w)"
+                continue
+            fi
+            print_info "=== slurm ${sub} ==="
+            submit_slurm_job "${sub}" "$@"
+        done < <(cohort_list_subjects "${root}" "${cohort}")
+        return 0
+    fi
+
+    local subject="$1"
+    shift
+    validate_environment
+    cmd_cohort_sync
+    submit_slurm_job "${subject}" "$@"
+}
+
+# ---------------------------------------------------------------------------
+# Cohort workflow — meld_data/<Cohort>/sub-*  →  meld_data/input/sub-*
+# (shared by ./meld_production.sh wrapper)
+# ---------------------------------------------------------------------------
+cohort_subject_has_t1w() {
+    local sub_dir="$1"
+    [[ -d "${sub_dir}/anat" ]] || return 1
+    local n
+    n=$(find "${sub_dir}/anat" -maxdepth 1 -name '*T1w.nii.gz' \( -type f -o -type l \) 2>/dev/null | wc -l)
+    [[ "${n}" -ge 1 ]]
+}
+
+cohort_install_bids_root_files() {
+    local input_root="$1"
+    local dd="${input_root}/dataset_description.json"
+    local mc="${input_root}/meld_bids_config.json"
+
+    if [[ ! -f "${dd}" ]]; then
+        print_info "Writing default ${dd}"
+        cat > "${dd}" << 'JSON'
+{
+    "Name": "MELD Graph Container Dataset",
+    "BIDSVersion": "1.6.0",
+    "DatasetType": "raw",
+    "Authors": ["MELD Research Team"],
+    "License": "CC0"
+}
+JSON
+    fi
+
+    if [[ ! -f "${mc}" ]]; then
+        print_info "Writing default ${mc}"
+        cat > "${mc}" << 'JSON'
+{
+"T1": {
+	"session": null,
+	"datatype": "anat",
+	"suffix": "T1w"
+	},
+"FLAIR": {
+	"session": null,
+	"datatype": "anat",
+	"suffix": "FLAIR"
+	}
+}
+JSON
+    fi
+}
+
+cohort_ensure_base_dirs() {
+    local root="$1"
+    mkdir -p "${root}/input" "${root}/output" "${root}/logs" "${root}/locks"
+    mkdir -p "${root}/models" "${root}/meld_params" 2>/dev/null || true
+    print_success "Ensured ${root}/{input,output,logs,locks}"
+}
+
+cohort_sync_subjects() {
+    local root="$1"
+    local input_root="${root}/input"
+    local linked=0
+    local skipped=0
+
+    print_info "Scanning cohort folders under ${root} ..."
+
+    for cohort_path in "${root}"/*/; do
+        [[ -d "${cohort_path}" ]] || continue
+        local cohort
+        cohort=$(basename "${cohort_path}")
+
+        if echo "${cohort}" | grep -qE "${COHORT_RESERVED}"; then
+            continue
+        fi
+
+        local has_sub=0
+        for sub_path in "${cohort_path}"sub-*/; do
+            [[ -d "${sub_path}" ]] || continue
+            has_sub=1
+            break
+        done
+
+        if [[ "${has_sub}" -eq 0 ]]; then
+            continue
+        fi
+
+        print_info "Cohort: ${cohort}"
+
+        for sub_path in "${cohort_path}"sub-*/; do
+            [[ -d "${sub_path}" ]] || continue
+            local sub
+            sub=$(basename "${sub_path}")
+
+            if ! cohort_subject_has_t1w "${sub_path}"; then
+                print_warning "Skip ${cohort}/${sub}: no anat/*T1w.nii.gz"
+                ((skipped+=1)) || true
+                continue
+            fi
+
+            local link_path="${input_root}/${sub}"
+            local rel_target="../${cohort}/${sub}"
+
+            if [[ -L "${link_path}" ]] || [[ -e "${link_path}" ]]; then
+                if [[ -L "${link_path}" ]]; then
+                    local cur_target
+                    cur_target=$(readlink "${link_path}")
+                    if [[ "${cur_target}" == "${rel_target}" ]]; then
+                        print_info "  ${sub}: already linked OK"
+                        continue
+                    fi
+                    print_error "  ${sub}: input/${sub} is symlink -> ${cur_target}, expected ${rel_target}"
+                    ((skipped+=1)) || true
+                    continue
+                fi
+                print_error "  ${sub}: input/${sub} exists and is not a symlink — fix manually"
+                ((skipped+=1)) || true
+                continue
+            fi
+
+            ln -sfn "${rel_target}" "${link_path}"
+            print_success "  ${sub} -> ${rel_target}"
+            ((linked+=1)) || true
+        done
+    done
+
+    print_info "Sync summary: new links ${linked}, skipped/errors ${skipped}"
+}
+
+cmd_cohort_sync() {
+    local root="${MELD_DATA_DIR}"
+    cohort_ensure_base_dirs "${root}"
+    cohort_install_bids_root_files "${root}/input"
+    cohort_sync_subjects "${root}"
+}
+
+cohort_list_subjects() {
+    local root="$1"
+    local cohort="$2"
+    local cp="${root}/${cohort}"
+    if [[ ! -d "${cp}" ]]; then
+        print_error "Cohort not found: ${cp}"
+        exit 1
+    fi
+    find "${cp}" -mindepth 1 -maxdepth 1 -type d -name 'sub-*' | sort | while read -r p; do
+        basename "${p}"
+    done
+}
+
+cohort_show_help() {
+    cat <<'EOF'
+Usage: ./meld-docker cohort <subcommand> [args]
+
+  sync                      Link meld_data/<Cohort>/sub-* → meld_data/input/sub-*
+  run <subject> [flags]     sync, then same as: meld-docker run
+  slurm <subject> [flags]   sync, then one SLURM job (same as: meld-docker slurm <subject>)
+  run-all <Cohort> [flags]  sync, then run each subject locally (sequential)
+  slurm-all <Cohort> [flags] sync, then one SLURM job per subject
+  (Same as: ./meld-docker slurm cohort <Cohort>)
+
+Cohort layout: ${MELD_DATA_DIR}/<Cohort>/sub-XXX/anat/*_T1w.nii.gz
+EOF
+}
+
+cmd_cohort() {
+    if [[ $# -eq 0 ]]; then
+        cohort_show_help
+        exit 0
+    fi
+
+    local subcmd="$1"
+    shift
+
+    case "${subcmd}" in
+        sync)
+            cmd_cohort_sync
+            ;;
+        run)
+            cmd_cohort_sync
+            if [[ $# -eq 0 ]]; then
+                print_error "Subject ID required"
+                cohort_show_help
+                exit 1
+            fi
+            cmd_run "$@"
+            ;;
+        slurm)
+            cmd_cohort_sync
+            if [[ $# -eq 0 ]]; then
+                print_error "Subject ID required"
+                cohort_show_help
+                exit 1
+            fi
+            validate_environment
+            submit_slurm_job "$@"
+            ;;
+        run-all|run-cohort)
+            cmd_cohort_sync
+            if [[ $# -eq 0 ]]; then
+                print_error "Cohort name required (e.g. Meld_Owen)"
+                exit 1
+            fi
+            local cohort="$1"
+            shift
+            local root="${MELD_DATA_DIR}"
+            while IFS= read -r sub; do
+                [[ -z "${sub}" ]] && continue
+                if ! cohort_subject_has_t1w "${root}/${cohort}/${sub}"; then
+                    print_warning "Skip ${sub} (no T1w)"
+                    continue
+                fi
+                print_info "=== run ${sub} ==="
+                cmd_run "${sub}" "$@" || exit $?
+            done < <(cohort_list_subjects "${root}" "${cohort}")
+            ;;
+        slurm-all|slurm-cohort)
+            validate_environment
+            cmd_cohort_sync
+            if [[ $# -eq 0 ]]; then
+                print_error "Cohort name required (e.g. Meld_Owen)"
+                exit 1
+            fi
+            local cohort="$1"
+            shift
+            local root="${MELD_DATA_DIR}"
+            while IFS= read -r sub; do
+                [[ -z "${sub}" ]] && continue
+                if ! cohort_subject_has_t1w "${root}/${cohort}/${sub}"; then
+                    print_warning "Skip ${sub} (no T1w)"
+                    continue
+                fi
+                print_info "=== slurm ${sub} ==="
+                submit_slurm_job "${sub}" "$@"
+            done < <(cohort_list_subjects "${root}" "${cohort}")
+            ;;
+        help|-h|--help)
+            cohort_show_help
+            ;;
+        *)
+            print_error "Unknown cohort subcommand: ${subcmd}"
+            cohort_show_help
+            exit 1
+            ;;
+    esac
+}
+
+# ---------------------------------------------------------------------------
+# cmd_version
+# ---------------------------------------------------------------------------
 cmd_version() {
     print_header
     echo ""
-    echo "Version: $VERSION"
-    echo "Container: ${CONTAINER_IMAGE}"
-    echo "Data: ${MELD_DATA_DIR}"
+    printf "  %-22s %s\n" "Script version:" "${VERSION}"
+    printf "  %-22s %s\n" "Deploy root:" "${MELD_DEPLOY_ROOT}"
+    printf "  %-22s %s\n" "Container:"      "${CONTAINER_IMAGE}"
+    printf "  %-22s %s\n" "Data directory:" "${MELD_DATA_DIR}"
+    printf "  %-22s %s\n" "meld_params src:" "${MELD_PARAMS_SRC:-${MELD_DATA_DIR}/meld_params (default)}"
+    printf "  %-22s %s\n" "Models src:"     "${MODELS_SRC:-${MELD_DATA_DIR}/models (default)}"
+    echo ""
+    if [[ -f "${CONTAINER_IMAGE}" ]]; then
+        print_success "Container image present"
+        ls -lh "${CONTAINER_IMAGE}" | awk '{print "  Size:", $5, "  Modified:", $6, $7, $8}'
+    else
+        print_warning "Container image NOT found"
+    fi
     echo ""
 }
 
+# ---------------------------------------------------------------------------
 main() {
-    if [ $# -eq 0 ]; then
+    if [[ $# -eq 0 ]]; then
         show_help
         exit 0
     fi
-    
+
     local command="$1"
     shift
-    
-    case "$command" in
-        run)
-            cmd_run "$@"
-            ;;
-        batch)
-            cmd_batch "$@"
-            ;;
-        status)
-            cmd_status "$@"
-            ;;
-        validate)
-            cmd_validate "$@"
-            ;;
-        logs)
-            cmd_logs "$@"
-            ;;
-        results)
-            cmd_results "$@"
-            ;;
-        shell)
-            cmd_shell
-            ;;
-        version)
-            cmd_version
-            ;;
-        help|--help|-h)
-            show_help
-            ;;
+
+    case "${command}" in
+        check)    cmd_check ;;
+        run)      cmd_run "$@" ;;
+        batch)    cmd_batch "$@" ;;
+        cohort)   cmd_cohort "$@" ;;
+        status)   cmd_status "$@" ;;
+        validate) cmd_validate "$@" ;;
+        logs)     cmd_logs "$@" ;;
+        results)  cmd_results "$@" ;;
+        shell)    cmd_shell ;;
+        slurm)    cmd_slurm "$@" ;;
+        version)  cmd_version ;;
+        help|--help|-h) show_help ;;
         *)
-            print_error "Unknown command: $command"
+            print_error "Unknown command: ${command}"
             show_help
             exit 1
             ;;
