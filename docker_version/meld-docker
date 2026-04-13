@@ -78,7 +78,7 @@ COMMANDS:
     cohort <subcommand> [...]    Advanced: cohort → input/ sync + run/slurm (see ./meld-docker cohort)
     status [subject]             Show processing status
     validate <subject>           Validate input data structure
-    logs <subject>               View the pipeline log for a subject
+    logs [subject]               List recent logs, or show tails for <subject> (pipeline + SLURM + FreeSurfer)
     results <subject>            Show results summary for a subject
     shell                        Open an interactive container shell
     slurm <subject> [flags]      Sync cohorts → input/, then submit one subject to SLURM
@@ -105,6 +105,7 @@ EXAMPLES:
     ./meld-docker run sub-001 --fastsurfer -harmo_code H1
     ./meld-docker batch sub-001 sub-002 sub-003
     ./meld-docker validate sub-001
+    ./meld-docker logs
     ./meld-docker logs sub-001
     ./meld-docker status
     ./meld-docker slurm sub-001 --fastsurfer
@@ -112,6 +113,8 @@ EXAMPLES:
 Typical HPC flow:
     ./meld-docker check
     ./meld-docker slurm sub-001
+    ./meld-docker logs
+    ./meld-docker logs sub-001
     ./meld-docker slurm cohort Meld_Owen
 
 EOF
@@ -658,43 +661,76 @@ cmd_validate() {
 }
 
 # ---------------------------------------------------------------------------
-# cmd_logs — show per-subject log (most recent run)
+# cmd_logs — list logs, or show per-subject tails (pipeline + SLURM + FreeSurfer)
 # ---------------------------------------------------------------------------
 cmd_logs() {
     local subject="${1:-}"
+    local log_dir="${MELD_DATA_DIR}/logs"
 
     if [[ -z "${subject}" ]]; then
-        print_error "Subject ID required"
-        echo "Usage: ./meld-docker logs <subject>"
+        print_header
+        echo ""
+        print_info "Log directory: ${log_dir}"
+        if [[ ! -d "${log_dir}" ]]; then
+            print_warning "Directory does not exist yet (no runs logged here)."
+            exit 0
+        fi
+        print_info "Most recently modified files (top 25):"
+        ls -lt "${log_dir}" 2>/dev/null | head -26
+        echo ""
+        print_info "Usage: ./meld-docker logs <subject>"
+        print_info "Shows tails of: MELD_pipeline_<subject>_*.log, slurm_<subject>_*.out, recon-all.log / recon-all-status.log"
+        exit 0
+    fi
+
+    if [[ ! -d "${log_dir}" ]]; then
+        print_error "Log directory not found: ${log_dir}"
         exit 1
     fi
 
-    local log_dir="${MELD_DATA_DIR}/logs"
     local log_file
     log_file=$(ls -t "${log_dir}/MELD_pipeline_${subject}_"*.log 2>/dev/null | head -1 || true)
 
     if [[ -z "${log_file}" ]]; then
-        # Fallback: legacy logs not named by subject
         log_file=$(ls -t "${log_dir}/MELD_pipeline_"*.log 2>/dev/null | head -1 || true)
         if [[ -n "${log_file}" ]]; then
-            print_warning "No subject-specific log found. Showing most recent: $(basename "${log_file}")"
-        else
-            print_error "No logs found in ${log_dir}"
-            exit 1
+            print_warning "No subject-specific log for ${subject}. Showing most recent pipeline log: $(basename "${log_file}")"
         fi
     else
-        print_info "Log: ${log_file}"
+        print_info "Pipeline log: ${log_file}"
     fi
 
-    echo ""
-    tail -100 "${log_file}"
+    if [[ -n "${log_file}" ]] && [[ -s "${log_file}" ]]; then
+        echo ""
+        tail -100 "${log_file}"
+    elif [[ -n "${log_file}" ]]; then
+        print_warning "Pipeline log is empty (still buffering or only FreeSurfer output so far): ${log_file}"
+    else
+        print_warning "No MELD_pipeline_*.log found yet for ${subject}."
+    fi
 
-    # Also show FreeSurfer recon-all log tail if available
+    local slurm_out
+    slurm_out=$(ls -t "${log_dir}/slurm_${subject}_"*.out 2>/dev/null | head -1 || true)
+    if [[ -n "${slurm_out}" ]]; then
+        echo ""
+        print_info "=== SLURM stdout/stderr (last 50 lines): ${slurm_out} ==="
+        tail -50 "${slurm_out}"
+    else
+        echo ""
+        print_info "(No slurm_${subject}_*.out in ${log_dir} yet)"
+    fi
+
     local recon_log="${MELD_DATA_DIR}/output/fs_outputs/${subject}/scripts/recon-all.log"
+    local recon_status="${MELD_DATA_DIR}/output/fs_outputs/${subject}/scripts/recon-all-status.log"
+    if [[ -f "${recon_status}" ]]; then
+        echo ""
+        print_info "=== FreeSurfer recon-all-status (last 25 lines) ==="
+        tail -25 "${recon_status}"
+    fi
     if [[ -f "${recon_log}" ]]; then
         echo ""
-        print_info "=== FreeSurfer recon-all (last 30 lines) ==="
-        tail -30 "${recon_log}"
+        print_info "=== FreeSurfer recon-all.log (last 35 lines) ==="
+        tail -35 "${recon_log}"
     fi
 }
 
