@@ -1,3 +1,6 @@
+# Site-specific paths (copy from production.env.example)
+production.env
+
 # Temporary files
 tmp/
 
