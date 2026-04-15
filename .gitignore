@@ -12,6 +12,7 @@ containers/
 
 # PDFs and documents
 *.pdf
+!reference_papers/*.pdf
 
 # Python
 __pycache__/
@@ -67,10 +68,6 @@ PIPELINE_STATUS.txt
 
 # Internal documentation (local only)
 NOTES.md
-
-# Reference papers folder (local only, PDFs excluded above)
-reference_papers/
-
 
 # Container setup documentation (local only)
 CONTAINER_SETUP_COMPLETE.md
