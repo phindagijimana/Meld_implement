@@ -43,6 +43,20 @@ except (NoOptionError, NoSectionError) as e:
     MELD_PARAMS_PATH = ""
 
 
+def _abs_under_scripts(path: str) -> str:
+    """Resolve relative paths in meld_config.ini against the meld_graph/ tree (not git-tracked)."""
+    if not path or os.path.isabs(path):
+        return path
+    return os.path.normpath(os.path.join(SCRIPTS_DIR, path))
+
+
+MELD_DATA_PATH = _abs_under_scripts(MELD_DATA_PATH)
+BASE_PATH = _abs_under_scripts(BASE_PATH)
+EXPERIMENT_PATH = _abs_under_scripts(EXPERIMENT_PATH)
+FS_SUBJECTS_PATH = _abs_under_scripts(FS_SUBJECTS_PATH)
+MELD_PARAMS_PATH = _abs_under_scripts(MELD_PARAMS_PATH)
+
+
 # files with and without harmonisation
 CLIPPING_PARAMS_FILE='clip_params_MELD.json'
 NORM_CONTROLS_PARAMS_FILE = 'Norm_controls_parameters_{}.hdf5'
