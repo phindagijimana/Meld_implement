@@ -1,5 +1,7 @@
 # Data and Results
 meld_graph/meld_data/
+# Local path configuration (copy from meld_graph/meld_config.ini.example)
+meld_graph/meld_config.ini
 logs/
 *.log
 *.out

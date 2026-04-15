@@ -1,9 +1,13 @@
 #!/bin/bash
-FS_CONTAINER="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/containers/freesurfer-7.4.1.sif"
-LICENSE_DIR="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/freesurfer_license"
-MELD_DATA="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/meld_graph/meld_data"
 NUM_THREADS="8"
-
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+case "$HERE" in
+  */freesurfer/bin) REPO_ROOT="$(cd "$HERE/../../.." && pwd)" ;;
+  *) REPO_ROOT="$(cd "$HERE/.." && pwd)" ;;
+esac
+FS_CONTAINER="${REPO_ROOT}/containers/freesurfer-7.4.1.sif"
+LICENSE_DIR="${REPO_ROOT}/freesurfer_license"
+MELD_DATA="${REPO_ROOT}/meld_graph/meld_data"
 # Check if -parallel flag is already in arguments
 if [[ "$*" != *"-parallel"* ]] && [[ "$*" == *"-all"* ]]; then
     # Add parallelization flags for full recon-all runs

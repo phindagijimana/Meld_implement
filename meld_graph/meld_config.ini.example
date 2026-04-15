@@ -1,5 +1,6 @@
 [DEFAULT]
-; enter the path to your MELD data here
+; Copy this file to meld_config.ini (see .gitignore — that file is local-only).
+; Use an absolute path, or a path relative to the meld_graph/ directory (e.g. meld_data).
 meld_data_path = /data
 
 [develop]

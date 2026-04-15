@@ -6,10 +6,10 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=24:00:00
-#SBATCH --output=/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/logs/meld_pipeline_%j.out
-#SBATCH --error=/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/logs/meld_pipeline_%j.err
+#SBATCH --output=logs/meld_pipeline_%j.out
+#SBATCH --error=logs/meld_pipeline_%j.err
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=pndagiji@urmc.rochester.edu
+##SBATCH --mail-user=you@example.com
 
 # =============================================================================
 # MELD Graph Pipeline - Production Ready
@@ -100,9 +100,9 @@ fi
 echo "✓ FreeSurfer license: $FS_LICENSE"
 
 # Check Python
-PYTHON_BIN="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/miniconda3/envs/meld_graph/bin/python"
-if [ ! -f "$PYTHON_BIN" ]; then
-    echo "ERROR: Python not found at $PYTHON_BIN"
+PYTHON_BIN="${MELD_PYTHON:-$(command -v python3)}"
+if [ -z "$PYTHON_BIN" ] || [ ! -x "$PYTHON_BIN" ]; then
+    echo "ERROR: Set MELD_PYTHON to your meld_graph Python, or install python3 on PATH"
     exit 1
 fi
 echo "✓ Python: $PYTHON_BIN ($($PYTHON_BIN --version))"

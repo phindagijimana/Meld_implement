@@ -1,6 +1,7 @@
 #!/bin/bash
 # Quick safety check before running MELD pipeline
 
+REPO_ROOT="${MELD_WORKSPACE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 SUBJECT_ID="$1"
 
 if [ -z "$SUBJECT_ID" ]; then
@@ -31,7 +32,7 @@ fi
 # 2. Check disk space
 echo ""
 echo "🔍 Checking disk space..."
-AVAIL_GB=$(df /mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/ | tail -1 | awk '{print int($4/1024/1024)}')
+AVAIL_GB=$(df "$REPO_ROOT" | tail -1 | awk '{print int($4/1024/1024)}')
 if [ "$AVAIL_GB" -lt 50 ]; then
     echo "  ❌ CRITICAL: Only ${AVAIL_GB}GB free (need >50GB)"
     ISSUES=$((ISSUES+1))
@@ -45,7 +46,7 @@ fi
 # 3. Check input data
 echo ""
 echo "🔍 Checking input data..."
-INPUT_DIR="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/meld_graph/meld_data/input/$SUBJECT_ID/anat"
+INPUT_DIR="${REPO_ROOT}/meld_graph/meld_data/input/$SUBJECT_ID/anat"
 if [ ! -f "$INPUT_DIR/${SUBJECT_ID}_T1w.nii.gz" ]; then
     echo "  ❌ CRITICAL: T1w image missing"
     ISSUES=$((ISSUES+1))
@@ -70,8 +71,8 @@ fi
 # 4. Check for partial previous runs
 echo ""
 echo "🔍 Checking for partial previous runs..."
-if [ -d "/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/meld_graph/meld_data/output/fs_outputs/$SUBJECT_ID" ]; then
-    if [ -f "/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph/meld_graph/meld_data/output/predictions_reports/$SUBJECT_ID/reports/MELD_report_${SUBJECT_ID}.pdf" ]; then
+if [ -d "${REPO_ROOT}/meld_graph/meld_data/output/fs_outputs/$SUBJECT_ID" ]; then
+    if [ -f "${REPO_ROOT}/meld_graph/meld_data/output/predictions_reports/$SUBJECT_ID/reports/MELD_report_${SUBJECT_ID}.pdf" ]; then
         echo "  ℹ️  INFO: Complete previous run found (will be overwritten)"
     else
         echo "  ⚠️  WARNING: Partial previous run detected"

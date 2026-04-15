@@ -34,8 +34,8 @@ PYTHON_VERSION="3.9"
 # PATH CONFIGURATION
 # =============================================================================
 
-# Base paths
-WORKSPACE_ROOT="/mnt/nfs/home/urmc-sh.rochester.edu/pndagiji/Documents/Meld_Graph"
+# Base paths (override with MELD_WORKSPACE if this file lives elsewhere)
+WORKSPACE_ROOT="${MELD_WORKSPACE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 MELD_GRAPH_DIR="${WORKSPACE_ROOT}/meld_graph"
 CONTAINER_DIR="${WORKSPACE_ROOT}/containers"
 LICENSE_DIR="${WORKSPACE_ROOT}/freesurfer_license"
