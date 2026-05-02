@@ -70,6 +70,17 @@ PIPELINE_STATUS.txt
 
 # Internal documentation (local only)
 NOTES.md
+cursor.md
+
+# Local / audit (may contain usernames, paths, site metadata)
+meld_run_audit_registry.csv
+run_sequential_regeneration.sh
+*audit*registry*.csv
+
+# Local deployment secrets and paths (keep *.example in repo)
+production.env
+**/production.env
+!**/production.env.example
 
 # Container setup documentation (local only)
 CONTAINER_SETUP_COMPLETE.md

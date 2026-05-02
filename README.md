@@ -19,9 +19,10 @@ cd docker_version && ./meld-docker run sub-001
 **Requirements:** Python 3.9+, SLURM, conda, 32GB RAM
 
 ```bash
-# 1. Clone repository
-git clone https://github.com/phindagijimana/Meld_graph_implementation.git
-cd Meld_graph_implementation
+# 1. Clone this repository (replace with your fork URL if you use one)
+# Upstream MELD Graph source: https://github.com/MELDProject/meld_graph
+git clone https://github.com/<ORG_OR_USER>/<REPO>.git
+cd <REPO>
 
 # 2. Get licenses (both free)
 # FreeSurfer: https://surfer.nmr.mgh.harvard.edu/registration.html → freesurfer_license/license.txt
@@ -45,9 +46,9 @@ cd Meld_graph_implementation
 **Note:** Runs directly without SLURM. For HPC/OOD environments, use native deployment.
 
 ```bash
-# 1. Clone and navigate
-git clone https://github.com/phindagijimana/Meld_graph_implementation.git
-cd Meld_graph_implementation/docker_version
+# 1. Clone and open docker deployment
+git clone https://github.com/<ORG_OR_USER>/<REPO>.git
+cd <REPO>/docker_version
 
 # 2. Pull container
 apptainer pull meld_graph_v2.2.4.sif docker://meldproject/meld_graph:v2.2.4
@@ -122,3 +123,7 @@ Common issues:
 - HDF5 lock errors: Normal for parallel jobs, auto-retries
 
 See TECHNICAL_REFERENCE.md for details.
+
+## Privacy and GitHub
+
+Do not push patient data, licenses, or site-specific secrets. See [docs/DATA_PRIVACY.md](docs/DATA_PRIVACY.md).
