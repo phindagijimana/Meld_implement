@@ -72,6 +72,9 @@ PIPELINE_STATUS.txt
 NOTES.md
 cursor.md
 
+# Builder-review Word templates (Markdown reviews live in reference_papers/)
+reference_papers/*.docx
+
 # Local / audit (may contain usernames, paths, site metadata)
 meld_run_audit_registry.csv
 run_sequential_regeneration.sh
