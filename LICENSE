@@ -1,0 +1,20 @@
+SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+MELD Graph source under meld_graph/ and the container
+docker://meldproject/meld_graph:v2.2.4 are licensed by the MELD Project
+under the PolyForm Noncommercial License 1.0.0:
+
+https://polyformproject.org/licenses/noncommercial/1.0.0
+https://github.com/MELDProject/meld_graph/blob/main/LICENSE.md
+
+Wrapper scripts in this repository (./meld, docker_version/meld-docker, and the
+documentation added here) are distributed under the same PolyForm
+Noncommercial License 1.0.0 so a clone has one set of terms.
+
+FreeSurfer and the MELD registration file (meld_license.txt) are separate
+licenses. Each user obtains them. They are not included in this repository.
+
+Citation
+Ripart M, Spitzer H, Williams LZJ, et al. Detection of Epileptogenic Focal
+Cortical Dysplasia Using Graph Neural Networks: A MELD Study. JAMA Neurology.
+Published online February 24, 2025. doi:10.1001/jamaneurol.2024.5406

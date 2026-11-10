@@ -19,7 +19,7 @@ Keep **code and documentation** in this repository. Treat anything that can iden
 - `meld_graph/meld_data/`, `docker_version/meld_data/`, large `*.sif`
 - `meld_graph/meld_config.ini`, `production.env` (not `*.example`)
 - Pipeline logs `*.log`, `*.out`
-- License file paths under `freesurfer_license/` and docker bundle copies
+- License files: `freesurfer_license/license.txt`, `docker_version/freesurfer_license.txt`, `docker_version/meld_license.txt`, `meld_license.txt`, `meld_graph/license.txt`
 
 ## Before every push
 

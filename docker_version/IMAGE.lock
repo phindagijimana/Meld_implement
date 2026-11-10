@@ -1,0 +1,5 @@
+# Refreshed by ./meld-docker setup. Commit this file. Do not commit the .sif.
+Image: docker://meldproject/meld_graph:v2.2.4
+Tag: v2.2.4
+LocalFile: meld_graph_v2.2.4.sif
+Digest: pending

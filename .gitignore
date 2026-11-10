@@ -88,6 +88,9 @@ production.env
 # Container setup documentation (local only)
 CONTAINER_SETUP_COMPLETE.md
 
+# Local intake and subject indexes (identifiers stay off git)
+staging/
+
 # Test data
 local_test_data/
 
@@ -99,7 +102,12 @@ meld_license.txt
 docker_version/meld_license.txt
 docker_version/freesurfer_license.txt
 
-# Docker version data directories
-docker_version/meld_data/
+# Docker version data directories (keep the empty layout)
+docker_version/meld_data/**
+!docker_version/meld_data/**/
+!docker_version/meld_data/**/.gitkeep
+
+# FreeSurfer license placed beside the source tree (do not publish)
+meld_graph/license.txt
 docker_version/tmp/
 docker_version/*.sif

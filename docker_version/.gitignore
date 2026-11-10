@@ -4,11 +4,8 @@ production.env
 # Temporary files
 tmp/
 
-# Large data files
-meld_data/output/
+# Large data files. Keep the empty directory layout.
+meld_data/**
+!meld_data/**/
+!meld_data/**/.gitkeep
 *.sif
-
-# Keep structure files
-!meld_data/input/.gitkeep
-!meld_data/output/.gitkeep
-!meld_data/models/.gitkeep
